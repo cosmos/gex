@@ -48,13 +48,14 @@ import (
 )
 
 // redrawInterval is how often termdash redraws the screen.
-const redrawInterval = 500 * time.Millisecond
+const redrawInterval = 250 * time.Millisecond
 
 // widgets holds the widgets used by this demo.
 type widgets struct {
 	segDist  *segmentdisplay.SegmentDisplay
 	input    *textinput.TextInput
 	rollT    *text.Text
+	rollTxs  *text.Text
 	spGreen  *sparkline.SparkLine
 	spRed    *sparkline.SparkLine
 	gauge    *gauge.Gauge
@@ -85,7 +86,11 @@ func newWidgets(ctx context.Context, c *container.Container) (*widgets, error) {
 	if err != nil {
 		return nil, err
 	}
-	spGreen, spRed, err := newSparkLines(ctx)
+	// spGreen, spRed, err := newSparkLines(ctx)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	rollTxs, err := newRollTextTransactions(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -114,11 +119,12 @@ func newWidgets(ctx context.Context, c *container.Container) (*widgets, error) {
 		return nil, err
 	}
 	return &widgets{
-		segDist:  sd,
-		input:    input,
-		rollT:    rollT,
-		spGreen:  spGreen,
-		spRed:    spRed,
+		segDist: sd,
+		input:   input,
+		rollT:   rollT,
+		rollTxs: rollTxs,
+		// spGreen:  spGreen,
+		// spRed:    spRed,
 		gauge:    g,
 		heartLC:  heartLC,
 		barChart: bc,
@@ -184,18 +190,24 @@ func gridLayout(w *widgets, lt layoutType) ([]container.Option, error) {
 						container.BorderTitle("A rolling text"),
 					),
 				),
+				// grid.ColWidthPerc(50,
+				// 	grid.RowHeightPerc(50,
+				// 		grid.Widget(w.spGreen,
+				// 			container.Border(linestyle.Light),
+				// 			container.BorderTitle("Green SparkLine"),
+				// 		),
+				// 	),
+				// 	grid.RowHeightPerc(50,
+				// 		grid.Widget(w.spRed,
+				// 			container.Border(linestyle.Light),
+				// 			container.BorderTitle("Red SparkLine"),
+				// 		),
+				// 	),
+				// ),
 				grid.ColWidthPerc(50,
-					grid.RowHeightPerc(50,
-						grid.Widget(w.spGreen,
-							container.Border(linestyle.Light),
-							container.BorderTitle("Green SparkLine"),
-						),
-					),
-					grid.RowHeightPerc(50,
-						grid.Widget(w.spRed,
-							container.Border(linestyle.Light),
-							container.BorderTitle("Red SparkLine"),
-						),
+					grid.Widget(w.rollTxs,
+						container.Border(linestyle.Light),
+						container.BorderTitle("Last Transactions"),
 					),
 				),
 			),
@@ -603,7 +615,7 @@ func newSegmentDisplay(ctx context.Context, updateText <-chan string) (*segmentd
 		cell.ColorRed,
 	}
 
-	text := "Termdash"
+	text := "GIEX Gaia Status Display"
 	step := 0
 
 	go func() {
@@ -648,6 +660,24 @@ func newSegmentDisplay(ctx context.Context, updateText <-chan string) (*segmentd
 
 // newRollText creates a new Text widget that displays rolling text.
 func newRollText(ctx context.Context) (*text.Text, error) {
+	t, err := text.New(text.RollContent())
+	if err != nil {
+		return nil, err
+	}
+
+	i := 0
+	go periodic(ctx, 1*time.Second, func() error {
+		if err := t.Write(fmt.Sprintf("Writing line %d.\n", i), text.WriteCellOpts(cell.FgColor(cell.ColorNumber(142)))); err != nil {
+			return err
+		}
+		i++
+		return nil
+	})
+	return t, nil
+}
+
+// newRollText creates a new Text widget that displays rolling text.
+func newRollTextTransactions(ctx context.Context) (*text.Text, error) {
 	t, err := text.New(text.RollContent())
 	if err != nil {
 		return nil, err
