@@ -23,8 +23,12 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
+	"os/signal"
 	"sync"
 	"time"
+
+	"github.com/sacOO7/gowebsocket"
 
 	"github.com/mum4k/termdash"
 	"github.com/mum4k/termdash/align"
@@ -665,14 +669,60 @@ func newRollText(ctx context.Context) (*text.Text, error) {
 		return nil, err
 	}
 
-	i := 0
-	go periodic(ctx, 1*time.Second, func() error {
-		if err := t.Write(fmt.Sprintf("Writing line %d.\n", i), text.WriteCellOpts(cell.FgColor(cell.ColorNumber(142)))); err != nil {
-			return err
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+
+	socket := gowebsocket.New("ws://localhost:26657/websocket")
+
+	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
+		log.Fatal("Received connect error - ", err)
+	}
+
+	socket.OnConnected = func(socket gowebsocket.Socket) {
+		log.Println("Connected to server")
+	}
+
+	socket.OnPingReceived = func(data string, socket gowebsocket.Socket) {
+		log.Println("Received ping - " + data)
+	}
+
+	socket.OnPongReceived = func(data string, socket gowebsocket.Socket) {
+		log.Println("Received pong - " + data)
+	}
+
+	socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
+		log.Println("Disconnected from server ")
+		return
+	}
+
+	socket.Connect()
+
+	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='NewBlock'\"], \"id\": 1 }")
+
+	for {
+		select {
+		case <-interrupt:
+			log.Println("interrupt")
+			socket.Close()
+			return t, nil
 		}
-		i++
-		return nil
-	})
+	}
+	i := 0
+	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
+		log.Println("Received message - " + message)
+		if err := t.Write(fmt.Sprintf("Writing line %d.\n", i), text.WriteCellOpts(cell.FgColor(cell.ColorNumber(142)))); err != nil {
+			return
+		}
+	}
+
+	// i := 0
+	// go periodic(ctx, 1*time.Second, func() error {
+	// 	if err := t.Write(fmt.Sprintf("Writing line %d.\n", i), text.WriteCellOpts(cell.FgColor(cell.ColorNumber(142)))); err != nil {
+	// 		return err
+	// 	}
+	// 	i++
+	// 	return nil
+	// })
 	return t, nil
 }
 
