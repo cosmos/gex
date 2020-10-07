@@ -2,7 +2,7 @@
 
 run application
 
-`go run terminal.go`
+`go run main.go`
 
 ## More
 

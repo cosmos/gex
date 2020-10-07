@@ -1,4 +1,4 @@
-//echo_websocket.go
+// example websocket connection Blocks
 
 package main
 
