@@ -68,10 +68,8 @@ func writeTransactions(ctx context.Context, t *text.Text) {
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentTx := gjson.Get(message, "result.data.value.TxResult")
 		currentTime := time.Now()
-		height := currentTx.Get("height").String()
-		txType := currentTx.Get("result.events.1.type").String()
 		if currentTx.String() != "" {
-			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02 03:04:05 PM")+"\nTransaction height "+height+" type "+txType)); err != nil {
+			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02 03:04:05 PM")+"\n"+currentTx.String())); err != nil {
 				panic(err)
 			}
 		}
@@ -140,27 +138,61 @@ func writeBlocks(ctx context.Context, t *text.Text) {
 // writeLines writes a line of text to the text widget every delay.
 // Exits when the context expires.
 func writeValidators(ctx context.Context, t *text.Text, delay time.Duration) {
-	ticker := time.NewTicker(delay)
-	defer ticker.Stop()
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+
+	socket := gowebsocket.New("ws://localhost:26657/websocket")
+
+	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
+		log.Fatal("Received connect error - ", err)
+	}
+
+	socket.OnConnected = func(socket gowebsocket.Socket) {
+		validators := gjson.Get(getFromRPC("validators"), "result.validators")
+		t.Reset()
+
+		validators.ForEach(func(key, validator gjson.Result) bool {
+
+			ta := table.NewWriter()
+			ta.AppendRow([]interface{}{key.Int(), validator.Get("address").String(), validator.Get("voting_power").String()})
+
+			if err := t.Write(fmt.Sprintf("%s\n", ta.Render())); err != nil {
+				panic(err)
+			}
+			return true // keep iterating
+		})
+	}
+
+	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
+		validators := gjson.Get(getFromRPC("validators"), "result.validators")
+		t.Reset()
+
+		validators.ForEach(func(key, validator gjson.Result) bool {
+
+			ta := table.NewWriter()
+			ta.AppendRow([]interface{}{key.Int(), validator.Get("address").String(), validator.Get("voting_power").String()})
+
+			if err := t.Write(fmt.Sprintf("%s\n", ta.Render())); err != nil {
+				panic(err)
+			}
+			return true // keep iterating
+		})
+	}
+
+	socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
+		log.Println("Disconnected from server ")
+		return
+	}
+
+	socket.Connect()
+
+	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='ValidatorSetUpdates'\"], \"id\": 3 }")
 
 	for {
 		select {
-		case <-ticker.C:
-			validators := gjson.Get(getFromRPC("validators"), "result.validators")
-			t.Reset()
-
-			validators.ForEach(func(key, validator gjson.Result) bool {
-
-				ta := table.NewWriter()
-				ta.AppendRow([]interface{}{key.Int(), validator.Get("address").String(), validator.Get("voting_power").String()})
-
-				if err := t.Write(fmt.Sprintf("%s\n", ta.Render())); err != nil {
-					panic(err)
-				}
-				return true // keep iterating
-			})
-
 		case <-ctx.Done():
+			log.Println("interrupt")
+			socket.Close()
 			return
 		}
 	}
@@ -171,7 +203,7 @@ func writeValidators(ctx context.Context, t *text.Text, delay time.Duration) {
 func playGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
 	var progress int64 = 0
 
-	ticker := time.NewTicker(250 * time.Millisecond)
+	ticker := time.NewTicker(1000 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
@@ -180,7 +212,6 @@ func playGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
 			maxHeight := gjson.Get(getFromRPC("dump_consensus_state"), "result.round_state.height").Int()
 
 			progress = (blockHeight / maxHeight) * 100
-
 			if err := g.Absolute(int(progress), 100); err != nil {
 				panic(err)
 			}
@@ -236,7 +267,7 @@ func main() {
 		panic(err)
 	}
 
-	go writeValidators(ctx, rolledValidators, 10*time.Second)
+	go writeValidators(ctx, rolledValidators, 1*time.Second)
 	go writeBlocks(ctx, rolledBlocks)
 	go writeTransactions(ctx, rolledTx)
 
@@ -259,6 +290,14 @@ func main() {
 		go playGauge(ctx, absolute, networkStatus.Get("result.sync_info.latest_block_height").Int())
 	}
 
+	peerWidget, err := text.New()
+	if err != nil {
+		panic(err)
+	}
+	if err := peerWidget.Write("5"); err != nil {
+		panic(err)
+	}
+
 	// Draw Dashboard
 	c, err := container.New(
 		t,
@@ -269,7 +308,16 @@ func main() {
 			container.Top(
 				container.SplitVertical(
 					container.Left(
-						container.PlaceWidget(absolute),
+						container.SplitHorizontal(
+							container.Top(
+								container.Border(linestyle.Light),
+								container.BorderTitle("Peers"),
+								container.PlaceWidget(peerWidget),
+							),
+							container.Bottom(
+								container.PlaceWidget(absolute),
+							),
+						),
 					),
 					container.Right(
 						container.Border(linestyle.Light),
