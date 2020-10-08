@@ -1,4 +1,4 @@
-module tosch110/giex
+module tosch110/gex
 
 go 1.15
 
