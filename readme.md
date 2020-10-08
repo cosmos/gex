@@ -1,8 +1,10 @@
 ## Start
 
-run application
+Cosmos SDK explorer in-terminal
 
-`go run main.go`
+run application on port 26656/26657 as usual
+
+Git clone, enter directory and `go run main.go`
 
 ![Terminal](./render2.gif "Render Terminal")
 
