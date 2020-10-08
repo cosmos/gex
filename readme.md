@@ -4,7 +4,7 @@ run application
 
 `go run main.go`
 
-![Terminal](./render1.gif "Render Terminal")
+![Terminal](./render2.gif "Render Terminal")
 
 ## More
 
