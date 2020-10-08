@@ -1,4 +1,5 @@
-// Copyright 2018 Google Inc.
+// Copyright 2018 Goole Inc.
+// Copyright 2020 Tobias Schwarz
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Binary textdemo displays a couple of Text widgets.
+// Binary explorer demo. Displays widgets for insights of blockchain behaviour.
 // Exist when 'q' is pressed.
 package main
 
@@ -45,6 +46,193 @@ const (
 	appRPC = "http://localhost:26657/"
 )
 
+func main() {
+	t, err := termbox.New()
+	if err != nil {
+		panic(err)
+	}
+	defer t.Close()
+
+	networkStatus := gjson.Parse(getFromRPC("status"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Blocks parsing widget
+	blocksWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := blocksWidget.Write("Latest block height " + networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
+		panic(err)
+	}
+
+	// Transaction parsing widget
+	transactionWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := transactionWidget.Write("Transactions will appear as soon as they are confirmed in a block.\n\n"); err != nil {
+		panic(err)
+	}
+
+	validatorWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := validatorWidget.Write("List available validators.\n\n"); err != nil {
+		panic(err)
+	}
+
+	peerWidget, err := text.New()
+	if err != nil {
+		panic(err)
+	}
+	if err := peerWidget.Write("0"); err != nil {
+		panic(err)
+	}
+
+	healthWidget, err := text.New()
+	if err != nil {
+		panic(err)
+	}
+	if err := healthWidget.Write("🔴"); err != nil {
+		panic(err)
+	}
+
+	timeWidget, err := text.New()
+	if err != nil {
+		panic(err)
+	}
+	currentTime := time.Now()
+	if err := timeWidget.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02\n03:04:05 PM"))); err != nil {
+		panic(err)
+	}
+
+	maxBlocksizeWidget, err := text.New()
+	maxBlockSize := gjson.Get(getFromRPC("consensus_params"), "result.consensus_params.block.max_bytes").Int()
+	if err != nil {
+		panic(err)
+	}
+	if err := maxBlocksizeWidget.Write(fmt.Sprintf("%s", byteCountDecimal(maxBlockSize))); err != nil {
+		panic(err)
+	}
+
+	// system powered widgets
+	go writeTime(ctx, timeWidget, 1*time.Second)
+
+	// websocket powered widgets
+	go writeValidators(ctx, validatorWidget)
+	go writeBlocks(ctx, blocksWidget)
+	go writeTransactions(ctx, transactionWidget)
+
+	// rpc widgets
+	go writePeers(ctx, peerWidget, 1*time.Second)
+	go writeHealth(ctx, healthWidget, 1*time.Second)
+
+	// blockchain download gauge
+	syncWidget, err := gauge.New(
+		gauge.Height(1),
+		gauge.Color(cell.ColorBlue),
+		gauge.Border(linestyle.Light),
+		gauge.BorderTitle("Blockchain download %"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	if networkStatus.Get("result.sync_info.catching_up").String() == "false" {
+		if err := syncWidget.Absolute(100, 100); err != nil {
+			panic(err)
+		}
+	} else {
+		go syncGauge(ctx, syncWidget, networkStatus.Get("result.sync_info.latest_block_height").Int())
+	}
+
+	// Draw Dashboard
+	c, err := container.New(
+		t,
+		container.Border(linestyle.Light),
+		container.BorderTitle("PRESS Q TO QUIT | Network "+networkStatus.Get("result.node_info.network").String()+" Version "+networkStatus.Get("result.node_info.version").String()),
+		container.BorderColor(cell.ColorNumber(2)),
+		container.SplitHorizontal(
+			container.Top(
+				container.SplitVertical(
+					container.Left(
+						container.SplitHorizontal(
+							container.Top(
+								container.SplitVertical(
+									container.Left(
+										container.SplitVertical(
+											container.Left(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Health"),
+												container.PlaceWidget(healthWidget),
+											),
+											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("System Time"),
+												container.PlaceWidget(timeWidget),
+											),
+										),
+									),
+									container.Right(
+										container.SplitVertical(
+											container.Left(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Max Block Size"),
+												container.PlaceWidget(maxBlocksizeWidget),
+											),
+											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Connected Peers"),
+												container.PlaceWidget(peerWidget),
+											),
+										),
+									),
+								),
+							),
+							container.Bottom(
+								container.PlaceWidget(syncWidget),
+							),
+						),
+					),
+					container.Right(
+						container.Border(linestyle.Light),
+						container.BorderTitle("Validators"),
+						container.PlaceWidget(validatorWidget),
+					),
+				),
+			),
+			container.Bottom(
+				container.SplitVertical(
+					container.Left(
+						container.Border(linestyle.Light),
+						container.BorderTitle("Latest Blocks"),
+						container.PlaceWidget(blocksWidget),
+					), container.Right(
+						container.Border(linestyle.Light),
+						container.BorderTitle("Latest Confirmed Transactions"),
+						container.PlaceWidget(transactionWidget),
+					),
+				),
+			),
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	quitter := func(k *terminalapi.Keyboard) {
+		if k.Key == 'q' || k.Key == 'Q' {
+			cancel()
+		}
+	}
+
+	if err := termdash.Run(ctx, t, c, termdash.KeyboardSubscriber(quitter)); err != nil {
+		panic(err)
+	}
+}
+
 func getFromRPC(endpoint string) string {
 	resp, _ := resty.R().
 		SetHeader("Cache-Control", "no-cache").
@@ -54,7 +242,93 @@ func getFromRPC(endpoint string) string {
 	return resp.String()
 }
 
-// writeTransactions writes the latest Transactions from the websocket.
+// writeTime writes the current system time to the timeWdiget.
+// Exits when the context expires.
+func writeTime(ctx context.Context, t *text.Text, delay time.Duration) {
+	ticker := time.NewTicker(delay)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			currentTime := time.Now()
+			t.Reset()
+			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02\n03:04:05 PM"))); err != nil {
+				panic(err)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// writeHealth writes the status to the healthWidget.
+// Exits when the context expires.
+func writeHealth(ctx context.Context, t *text.Text, delay time.Duration) {
+	health := gjson.Get(getFromRPC("health"), "result")
+	t.Reset()
+	if health.Exists() {
+		if err := t.Write("🟢"); err != nil {
+			panic(err)
+		}
+	} else {
+		if err := t.Write("🔴"); err != nil {
+			panic(err)
+		}
+	}
+
+	ticker := time.NewTicker(delay)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			health := gjson.Get(getFromRPC("health"), "result")
+			t.Reset()
+			if health.Exists() {
+				if err := t.Write("🟢"); err != nil {
+					panic(err)
+				}
+			} else {
+				if err := t.Write("🔴"); err != nil {
+					panic(err)
+				}
+			}
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// writePeers writes the connected Peers to the peerWidget.
+// Exits when the context expires.
+func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
+	peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+	t.Reset()
+	if err := t.Write(peers); err != nil {
+		panic(err)
+	}
+
+	ticker := time.NewTicker(delay)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			t.Reset()
+			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+			if err := t.Write(peers); err != nil {
+				panic(err)
+			}
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// writeTransactions writes the latest Transactions to the transactionsWidget.
 // Exits when the context expires.
 func writeTransactions(ctx context.Context, t *text.Text) {
 	interrupt := make(chan os.Signal, 1)
@@ -66,7 +340,7 @@ func writeTransactions(ctx context.Context, t *text.Text) {
 		log.Fatal("Received connect error - ", err)
 	}
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
-		currentTx := gjson.Get(message, "result.data.value.TxResult")
+		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
 		currentTime := time.Now()
 		if currentTx.String() != "" {
 			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02 03:04:05 PM")+"\n"+currentTx.String())); err != nil {
@@ -94,7 +368,7 @@ func writeTransactions(ctx context.Context, t *text.Text) {
 	}
 }
 
-// writeBlocks writes the latest Block from the websocket.
+// writeBlocks writes the latest Block to the blocksWidget.
 // Exits when the context expires.
 func writeBlocks(ctx context.Context, t *text.Text) {
 	interrupt := make(chan os.Signal, 1)
@@ -135,9 +409,9 @@ func writeBlocks(ctx context.Context, t *text.Text) {
 	}
 }
 
-// writeLines writes a line of text to the text widget every delay.
+// writeValidators writes the current validator set to the validatoWidget
 // Exits when the context expires.
-func writeValidators(ctx context.Context, t *text.Text, delay time.Duration) {
+func writeValidators(ctx context.Context, t *text.Text) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
@@ -150,15 +424,16 @@ func writeValidators(ctx context.Context, t *text.Text, delay time.Duration) {
 	socket.OnConnected = func(socket gowebsocket.Socket) {
 		validators := gjson.Get(getFromRPC("validators"), "result.validators")
 		t.Reset()
-
+		i := 1
 		validators.ForEach(func(key, validator gjson.Result) bool {
 
 			ta := table.NewWriter()
-			ta.AppendRow([]interface{}{key.Int(), validator.Get("address").String(), validator.Get("voting_power").String()})
+			ta.AppendRow([]interface{}{fmt.Sprintf("%d", i), validator.Get("address").String(), validator.Get("voting_power").String()})
 
 			if err := t.Write(fmt.Sprintf("%s\n", ta.Render())); err != nil {
 				panic(err)
 			}
+			i++
 			return true // keep iterating
 		})
 	}
@@ -167,14 +442,16 @@ func writeValidators(ctx context.Context, t *text.Text, delay time.Duration) {
 		validators := gjson.Get(getFromRPC("validators"), "result.validators")
 		t.Reset()
 
+		i := 1
 		validators.ForEach(func(key, validator gjson.Result) bool {
 
 			ta := table.NewWriter()
-			ta.AppendRow([]interface{}{key.Int(), validator.Get("address").String(), validator.Get("voting_power").String()})
+			ta.AppendRow([]interface{}{fmt.Sprintf("%d", i), validator.Get("address").String(), validator.Get("voting_power").String()})
 
 			if err := t.Write(fmt.Sprintf("%s\n", ta.Render())); err != nil {
 				panic(err)
 			}
+			i++
 			return true // keep iterating
 		})
 	}
@@ -198,10 +475,10 @@ func writeValidators(ctx context.Context, t *text.Text, delay time.Duration) {
 	}
 }
 
-// playGauge continuously changes the displayed percent value on the gauge by the
-// step once every delay. Exits when the context expires.
-func playGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
-	var progress int64 = 0
+// syncGauge displays the syncing status in the syncWidget
+// Exits when the context expires.
+func syncGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
+	var progress int64 = 50
 
 	ticker := time.NewTicker(1000 * time.Millisecond)
 	defer ticker.Stop()
@@ -209,9 +486,9 @@ func playGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
 		select {
 		case <-ticker.C:
 
-			maxHeight := gjson.Get(getFromRPC("dump_consensus_state"), "result.round_state.height").Int()
+			// maxHeight := gjson.Get(getFromRPC("dump_consensus_state"), "result.round_state.height").Int()
 
-			progress = (blockHeight / maxHeight) * 100
+			// progress = (blockHeight / maxHeight) * 100
 			if err := g.Absolute(int(progress), 100); err != nil {
 				panic(err)
 			}
@@ -222,136 +499,16 @@ func playGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
 	}
 }
 
-func main() {
-	t, err := termbox.New()
-	if err != nil {
-		panic(err)
+// byteCountDecimal calculates bytes integer to a human readable decimal number
+func byteCountDecimal(b int64) string {
+	const unit = 1000
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
 	}
-	defer t.Close()
-
-	networkStatus := gjson.Parse(getFromRPC("status"))
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	trimmed, err := text.New()
-	if err != nil {
-		panic(err)
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
 	}
-	if err := trimmed.Write("Trims lines that don't fit onto the canvas because they are too long for its width.."); err != nil {
-		panic(err)
-	}
-
-	// Block parsing widget
-	rolledBlocks, err := text.New(text.RollContent(), text.WrapAtWords())
-	if err != nil {
-		panic(err)
-	}
-	if err := rolledBlocks.Write("Latest block height " + networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
-		panic(err)
-	}
-
-	// Transaction parsing widget
-	rolledTx, err := text.New(text.RollContent(), text.WrapAtWords())
-	if err != nil {
-		panic(err)
-	}
-	if err := rolledTx.Write("Logs latest transactions.\nSupports keyboard and mouse scrolling.\n\n"); err != nil {
-		panic(err)
-	}
-
-	rolledValidators, err := text.New(text.RollContent(), text.WrapAtWords())
-	if err != nil {
-		panic(err)
-	}
-	if err := rolledValidators.Write("Rolls the content upwards if RollContent() option is provided.\nSupports keyboard and mouse scrolling.\n\n"); err != nil {
-		panic(err)
-	}
-
-	go writeValidators(ctx, rolledValidators, 1*time.Second)
-	go writeBlocks(ctx, rolledBlocks)
-	go writeTransactions(ctx, rolledTx)
-
-	// blockchain download gauge
-	absolute, err := gauge.New(
-		gauge.Height(1),
-		gauge.Color(cell.ColorBlue),
-		gauge.Border(linestyle.Light),
-		gauge.BorderTitle("Blockchain download %"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	if networkStatus.Get("result.sync_info.catching_up").String() == "false" {
-		if err := absolute.Absolute(100, 100); err != nil {
-			panic(err)
-		}
-	} else {
-		go playGauge(ctx, absolute, networkStatus.Get("result.sync_info.latest_block_height").Int())
-	}
-
-	peerWidget, err := text.New()
-	if err != nil {
-		panic(err)
-	}
-	if err := peerWidget.Write("5"); err != nil {
-		panic(err)
-	}
-
-	// Draw Dashboard
-	c, err := container.New(
-		t,
-		container.Border(linestyle.Light),
-		container.BorderTitle("PRESS Q TO QUIT | Network "+networkStatus.Get("result.node_info.network").String()+" Version "+networkStatus.Get("result.node_info.version").String()),
-		container.BorderColor(cell.ColorNumber(2)),
-		container.SplitHorizontal(
-			container.Top(
-				container.SplitVertical(
-					container.Left(
-						container.SplitHorizontal(
-							container.Top(
-								container.Border(linestyle.Light),
-								container.BorderTitle("Peers"),
-								container.PlaceWidget(peerWidget),
-							),
-							container.Bottom(
-								container.PlaceWidget(absolute),
-							),
-						),
-					),
-					container.Right(
-						container.Border(linestyle.Light),
-						container.BorderTitle("Validators"),
-						container.PlaceWidget(rolledValidators),
-					),
-				),
-			),
-			container.Bottom(
-				container.SplitVertical(
-					container.Left(
-						container.Border(linestyle.Light),
-						container.BorderTitle("Latest Blocks"),
-						container.PlaceWidget(rolledBlocks),
-					), container.Right(
-						container.Border(linestyle.Light),
-						container.BorderTitle("Latest Confirmed Transactions"),
-						container.PlaceWidget(rolledTx),
-					),
-				),
-			),
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	quitter := func(k *terminalapi.Keyboard) {
-		if k.Key == 'q' || k.Key == 'Q' {
-			cancel()
-		}
-	}
-
-	if err := termdash.Run(ctx, t, c, termdash.KeyboardSubscriber(quitter)); err != nil {
-		panic(err)
-	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
 }
