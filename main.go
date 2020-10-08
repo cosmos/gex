@@ -43,7 +43,8 @@ import (
 )
 
 const (
-	appRPC = "http://localhost:26657/"
+	appRPC        = "http://localhost:26657/"
+	tendermintRPC = "https://rpc.cosmos.network/"
 )
 
 func main() {
@@ -145,7 +146,13 @@ func main() {
 			panic(err)
 		}
 	} else {
-		go syncGauge(ctx, syncWidget, networkStatus.Get("result.sync_info.latest_block_height").Int())
+		if networkStatus.Get("result.node_info.network").String() == "cosmoshub-3" {
+			go syncGauge(ctx, syncWidget, networkStatus.Get("result.sync_info.latest_block_height").Int())
+		} else {
+			if err := syncWidget.Absolute(70, 100); err != nil {
+				panic(err)
+			}
+		}
 	}
 
 	// Draw Dashboard
@@ -242,7 +249,16 @@ func getFromRPC(endpoint string) string {
 	return resp.String()
 }
 
-// writeTime writes the current system time to the timeWdiget.
+func getTendermintRPC(endpoint string) string {
+	resp, _ := resty.R().
+		SetHeader("Cache-Control", "no-cache").
+		SetHeader("Content-Type", "application/json").
+		Get(tendermintRPC + endpoint)
+
+	return resp.String()
+}
+
+// writeTime writes the current system time to the timeWidget.
 // Exits when the context expires.
 func writeTime(ctx context.Context, t *text.Text, delay time.Duration) {
 	ticker := time.NewTicker(delay)
@@ -478,7 +494,7 @@ func writeValidators(ctx context.Context, t *text.Text) {
 // syncGauge displays the syncing status in the syncWidget
 // Exits when the context expires.
 func syncGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
-	var progress int64 = 50
+	var progress int64 = 0
 
 	ticker := time.NewTicker(1000 * time.Millisecond)
 	defer ticker.Stop()
@@ -486,9 +502,9 @@ func syncGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
 		select {
 		case <-ticker.C:
 
-			// maxHeight := gjson.Get(getFromRPC("dump_consensus_state"), "result.round_state.height").Int()
+			maxHeight := gjson.Get(getTendermintRPC("dump_consensus_state"), "result.round_state.height").Int()
 
-			// progress = (blockHeight / maxHeight) * 100
+			progress = (blockHeight / maxHeight) * 100
 			if err := g.Absolute(int(progress), 100); err != nil {
 				panic(err)
 			}
