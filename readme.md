@@ -2,11 +2,22 @@
 
 Cosmos SDK explorer in-terminal
 
-run application on port 26656/26657 as usual
+Run your application on port 26656/26657 as usual.
+Works with Starport.
 
-Git clone, enter directory and `go run main.go`
+`go get -u github.com/tosch110/gex`
+
+then in the terminal
+
+`gex`
 
 ![Terminal](./render1.gif "Render Terminal")
+
+## Run manually
+
+Git clone repository and cd into the directory, then
+
+`go run main.go`
 
 ## More
 
