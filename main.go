@@ -35,6 +35,7 @@ import (
 	"github.com/mum4k/termdash"
 	"github.com/mum4k/termdash/cell"
 	"github.com/mum4k/termdash/container"
+	"github.com/mum4k/termdash/keyboard"
 	"github.com/mum4k/termdash/linestyle"
 	"github.com/mum4k/termdash/terminal/termbox"
 	"github.com/mum4k/termdash/terminal/terminalapi"
@@ -149,6 +150,7 @@ func main() {
 		if networkStatus.Get("result.node_info.network").String() == "cosmoshub-3" {
 			go syncGauge(ctx, syncWidget, networkStatus.Get("result.sync_info.latest_block_height").Int())
 		} else {
+			// There is no way to detect maximum height in the network via RPC or websocket yet
 			if err := syncWidget.Absolute(70, 100); err != nil {
 				panic(err)
 			}
@@ -159,7 +161,7 @@ func main() {
 	c, err := container.New(
 		t,
 		container.Border(linestyle.Light),
-		container.BorderTitle("PRESS Q TO QUIT | Network "+networkStatus.Get("result.node_info.network").String()+" Version "+networkStatus.Get("result.node_info.version").String()),
+		container.BorderTitle("PRESS Q or ESC TO QUIT | Network "+networkStatus.Get("result.node_info.network").String()+" Version "+networkStatus.Get("result.node_info.version").String()),
 		container.BorderColor(cell.ColorNumber(2)),
 		container.SplitHorizontal(
 			container.Top(
@@ -230,7 +232,7 @@ func main() {
 	}
 
 	quitter := func(k *terminalapi.Keyboard) {
-		if k.Key == 'q' || k.Key == 'Q' {
+		if k.Key == 'q' || k.Key == 'Q' || k.Key == keyboard.KeyEsc {
 			cancel()
 		}
 	}
@@ -241,19 +243,27 @@ func main() {
 }
 
 func getFromRPC(endpoint string) string {
-	resp, _ := resty.R().
+	resp, err := resty.R().
 		SetHeader("Cache-Control", "no-cache").
 		SetHeader("Content-Type", "application/json").
 		Get(appRPC + endpoint)
+
+	if err != nil {
+		log.Fatalf("ERROR connection: %s", err)
+	}
 
 	return resp.String()
 }
 
 func getTendermintRPC(endpoint string) string {
-	resp, _ := resty.R().
+	resp, err := resty.R().
 		SetHeader("Cache-Control", "no-cache").
 		SetHeader("Content-Type", "application/json").
 		Get(tendermintRPC + endpoint)
+
+	if err != nil {
+		log.Fatalf("ERROR connection: %s", err)
+	}
 
 	return resp.String()
 }
