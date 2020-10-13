@@ -96,7 +96,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if err := healthWidget.Write("🔴"); err != nil {
+	if err := healthWidget.Write("🔴 no connection"); err != nil {
 		panic(err)
 	}
 
@@ -284,11 +284,11 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration) {
 	health := gjson.Get(getFromRPC("health"), "result")
 	t.Reset()
 	if health.Exists() {
-		if err := t.Write("🟢"); err != nil {
+		if err := t.Write("🟢 good"); err != nil {
 			panic(err)
 		}
 	} else {
-		if err := t.Write("🔴"); err != nil {
+		if err := t.Write("🔴 no connection"); err != nil {
 			panic(err)
 		}
 	}
@@ -302,11 +302,11 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration) {
 			health := gjson.Get(getFromRPC("health"), "result")
 			t.Reset()
 			if health.Exists() {
-				if err := t.Write("🟢"); err != nil {
+				if err := t.Write("🟢 good"); err != nil {
 					panic(err)
 				}
 			} else {
-				if err := t.Write("🔴"); err != nil {
+				if err := t.Write("🔴 no connection"); err != nil {
 					panic(err)
 				}
 			}
