@@ -243,15 +243,6 @@ func main() {
 	}
 }
 
-// func getStatus(endpoint string) (string, error) {
-// 	resp, err := resty.R().
-// 		SetHeader("Cache-Control", "no-cache").
-// 		SetHeader("Content-Type", "application/json").
-// 		Get(appRPC + endpoint)
-
-// 	return resp.String(), err
-// }
-
 func getFromRPC(endpoint string) string {
 	resp, err := resty.R().
 		SetHeader("Cache-Control", "no-cache").
