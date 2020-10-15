@@ -55,7 +55,11 @@ func main() {
 	}
 	defer t.Close()
 
-	networkStatus := gjson.Parse(getFromRPC("status"))
+	networkInfo, err := getStatus("status")
+	if err != nil {
+		panic(err)
+	}
+	networkStatus := gjson.Parse(networkInfo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -242,6 +246,15 @@ func main() {
 	}
 }
 
+func getStatus(endpoint string) (string, error) {
+	resp, err := resty.R().
+		SetHeader("Cache-Control", "no-cache").
+		SetHeader("Content-Type", "application/json").
+		Get(appRPC + endpoint)
+
+	return resp.String(), err
+}
+
 func getFromRPC(endpoint string) string {
 	resp, err := resty.R().
 		SetHeader("Cache-Control", "no-cache").
@@ -249,7 +262,7 @@ func getFromRPC(endpoint string) string {
 		Get(appRPC + endpoint)
 
 	if err != nil {
-		log.Fatalf("ERROR connection: %s", err)
+		panic(err)
 	}
 
 	return resp.String()
@@ -262,7 +275,7 @@ func getTendermintRPC(endpoint string) string {
 		Get(tendermintRPC + endpoint)
 
 	if err != nil {
-		log.Fatalf("ERROR connection: %s", err)
+		panic(err)
 	}
 
 	return resp.String()
