@@ -1,15 +1,19 @@
-## Start
+## Gaia Explorer - GEX
 
-Cosmos SDK explorer in-terminal
+An in-terminal explorer for Cosmos SDK blockchains.
 
-Run your application on port 26656/26657 as usual.
+Displays blocks, transactions, validator, network status and more about peers, connection, version and useful information when you want to have a quick peek into your own node.
 Works with Starport.
+
+## Install
 
 `go get -u github.com/tosch110/gex`
 
-then in the terminal
+## Run
 
 `gex`
+
+## Sneak-Peak
 
 ![Terminal](./render1.gif "Render Terminal")
 
@@ -18,9 +22,3 @@ then in the terminal
 Git clone repository and cd into the directory, then
 
 `go run main.go`
-
-## More
-
-websocket has a reference websocket connection
-
-main.go has a reference terminal dashboard application
