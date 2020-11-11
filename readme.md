@@ -15,7 +15,7 @@ Works with Starport.
 
 ## Sneak-Peak
 
-![Terminal](./render1.gif "Render Terminal")
+![Terminal](./render.gif "Render Terminal")
 
 ## Run manually
 
