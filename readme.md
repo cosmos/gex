@@ -7,7 +7,7 @@ Works with Starport.
 
 ## Install
 
-`go get -u github.com/tosch110/gex`
+`go get -u github.com/cosmos/gex`
 
 ## Run
 
