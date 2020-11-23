@@ -367,7 +367,8 @@ func writeTransactions(ctx context.Context, t *text.Text) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	socket := gowebsocket.New("ws://localhost:26657/websocket")
+	port := *givenPort
+	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
 	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
 		log.Fatal("Received connect error - ", err)
@@ -407,7 +408,8 @@ func writeBlocks(ctx context.Context, t *text.Text) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	socket := gowebsocket.New("ws://localhost:26657/websocket")
+	port := *givenPort
+	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
 	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
 		log.Fatal("Received connect error - ", err)
@@ -448,7 +450,8 @@ func writeValidators(ctx context.Context, t *text.Text) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	socket := gowebsocket.New("ws://localhost:26657/websocket")
+	port := *givenPort
+	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
 	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
 		log.Fatal("Received connect error - ", err)
