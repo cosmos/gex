@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"time"
 
@@ -44,9 +45,11 @@ import (
 )
 
 const (
-	appRPC        = "http://localhost:26657/"
+	appRPC        = "http://localhost"
 	tendermintRPC = "https://rpc.cosmos.network/"
 )
+
+var givenPort = flag.String("p", "26657", "port to connect to as a string")
 
 func main() {
 	t, err := termbox.New()
@@ -54,6 +57,8 @@ func main() {
 		panic(err)
 	}
 	defer t.Close()
+
+	flag.Parse()
 
 	networkInfo := getFromRPC("status")
 	networkStatus := gjson.Parse(networkInfo)
@@ -244,10 +249,11 @@ func main() {
 }
 
 func getFromRPC(endpoint string) string {
+	port := *givenPort
 	resp, err := resty.R().
 		SetHeader("Cache-Control", "no-cache").
 		SetHeader("Content-Type", "application/json").
-		Get(appRPC + endpoint)
+		Get(appRPC + ":" + port + "/" + endpoint)
 
 	if err != nil {
 		panic(err)
