@@ -13,6 +13,10 @@ Works with Starport.
 
 `gex`
 
+## Optional port
+
+`gex -p 27657`
+
 ## Sneak-Peak
 
 ![Terminal](./render.gif "Render Terminal")
