@@ -28,6 +28,8 @@ import (
 
 	"gopkg.in/resty.v1"
 
+	ga "github.com/OzqurYalcin/google-analytics/src"
+	"github.com/google/uuid"
 	"github.com/jedib0t/go-pretty/table"
 	"github.com/sacOO7/gowebsocket"
 	"github.com/tidwall/gjson"
@@ -49,6 +51,21 @@ const (
 )
 
 func main() {
+	api := new(ga.API)
+	api.ContentType = "application/x-www-form-urlencoded"
+
+	client := new(ga.Client)
+	client.ProtocolVersion = "1"
+	client.ClientID = uuid.New().String()
+	client.TrackingID = "UA-183957259-1"
+	client.HitType = "pageview"
+	client.DocumentLocationURL = "https://github.com/cosmos/gex"
+	client.DocumentTitle = "Visit"
+	client.DocumentEncoding = "UTF-8"
+
+	client.ProductAction = "launch"
+	api.Send(client)
+
 	t, err := termbox.New()
 	if err != nil {
 		panic(err)
