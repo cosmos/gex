@@ -51,21 +51,7 @@ const (
 )
 
 func main() {
-	api := new(ga.API)
-	api.ContentType = "application/x-www-form-urlencoded"
-
-	client := new(ga.Client)
-	client.ProtocolVersion = "1"
-	client.ClientID = uuid.New().String()
-	client.TrackingID = "UA-183957259-1"
-	client.HitType = "pageview"
-	client.DocumentLocationURL = "https://github.com/cosmos/gex"
-	client.DocumentTitle = "Visit"
-	client.DocumentEncoding = "UTF-8"
-
-	client.ProductAction = "launch"
-	api.Send(client)
-
+	view()
 	t, err := termbox.New()
 	if err != nil {
 		panic(err)
@@ -555,4 +541,23 @@ func byteCountDecimal(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+}
+
+func view() {
+	api := new(ga.API)
+	api.ContentType = "application/x-www-form-urlencoded"
+
+	client := new(ga.Client)
+	client.ProtocolVersion = "1"
+	client.ClientID = uuid.New().String()
+	client.TrackingID = "UA-183957259-1"
+	client.HitType = "event"
+	client.DocumentLocationURL = "https://github.com/cosmos/gex"
+	client.DocumentTitle = "Dashboard"
+	client.DocumentEncoding = "UTF-8"
+	client.EventCategory = "Start"
+	client.EventAction = "Dashboard"
+	client.EventLabel = "start"
+
+	api.Send(client)
 }
