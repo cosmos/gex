@@ -29,6 +29,8 @@ import (
 
 	"gopkg.in/resty.v1"
 
+	ga "github.com/OzqurYalcin/google-analytics/src"
+	"github.com/google/uuid"
 	"github.com/jedib0t/go-pretty/table"
 	"github.com/sacOO7/gowebsocket"
 	"github.com/tidwall/gjson"
@@ -52,6 +54,7 @@ const (
 var givenPort = flag.String("p", "26657", "port to connect to as a string")
 
 func main() {
+	view()
 	t, err := termbox.New()
 	if err != nil {
 		panic(err)
@@ -547,4 +550,23 @@ func byteCountDecimal(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+}
+
+func view() {
+	api := new(ga.API)
+	api.ContentType = "application/x-www-form-urlencoded"
+
+	client := new(ga.Client)
+	client.ProtocolVersion = "1"
+	client.ClientID = uuid.New().String()
+	client.TrackingID = "UA-183957259-1"
+	client.HitType = "event"
+	client.DocumentLocationURL = "https://github.com/cosmos/gex"
+	client.DocumentTitle = "Dashboard"
+	client.DocumentEncoding = "UTF-8"
+	client.EventCategory = "Start"
+	client.EventAction = "Dashboard"
+	client.EventLabel = "start"
+
+	api.Send(client)
 }
