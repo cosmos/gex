@@ -328,6 +328,8 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 				t.Write("🔴 no connection")
 				if reconnect == false {
 					connectionSignal <- "no_connection"
+					connectionSignal <- "no_connection"
+					connectionSignal <- "no_connection"
 					reconnect = true
 				}
 			}
