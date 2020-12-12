@@ -14,7 +14,7 @@
 // limitations under the License.
 
 // Binary explorer demo. Displays widgets for insights of blockchain behaviour.
-// Exist when 'q' is pressed.
+// Exist when 'q' or 'esc' is pressed.
 package main
 
 import (
@@ -24,8 +24,6 @@ import (
 	"time"
 
 	"log"
-	"os"
-	"os/signal"
 
 	"gopkg.in/resty.v1"
 
@@ -55,6 +53,7 @@ var givenPort = flag.String("p", "26657", "port to connect to as a string")
 
 func main() {
 	view()
+	connectionSignal := make(chan string)
 	t, err := termbox.New()
 	if err != nil {
 		panic(err)
@@ -65,6 +64,9 @@ func main() {
 
 	networkInfo := getFromRPC("status")
 	networkStatus := gjson.Parse(networkInfo)
+	if !networkStatus.Exists() {
+		panic("Application not running on localhost:" + fmt.Sprintf("%s", *givenPort))
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -131,14 +133,14 @@ func main() {
 	// system powered widgets
 	go writeTime(ctx, timeWidget, 1*time.Second)
 
-	// websocket powered widgets
-	go writeValidators(ctx, validatorWidget)
-	go writeBlocks(ctx, blocksWidget)
-	go writeTransactions(ctx, transactionWidget)
-
 	// rpc widgets
 	go writePeers(ctx, peerWidget, 1*time.Second)
-	go writeHealth(ctx, healthWidget, 1*time.Second)
+	go writeHealth(ctx, healthWidget, 500*time.Millisecond, connectionSignal)
+
+	// websocket powered widgets
+	go writeValidators(ctx, validatorWidget, connectionSignal)
+	go writeBlocks(ctx, blocksWidget, connectionSignal)
+	go writeTransactions(ctx, transactionWidget, connectionSignal)
 
 	// blockchain download gauge
 	syncWidget, err := gauge.New(
@@ -253,14 +255,10 @@ func main() {
 
 func getFromRPC(endpoint string) string {
 	port := *givenPort
-	resp, err := resty.R().
+	resp, _ := resty.R().
 		SetHeader("Cache-Control", "no-cache").
 		SetHeader("Content-Type", "application/json").
 		Get(appRPC + ":" + port + "/" + endpoint)
-
-	if err != nil {
-		panic(err)
-	}
 
 	return resp.String()
 }
@@ -300,17 +298,14 @@ func writeTime(ctx context.Context, t *text.Text, delay time.Duration) {
 
 // writeHealth writes the status to the healthWidget.
 // Exits when the context expires.
-func writeHealth(ctx context.Context, t *text.Text, delay time.Duration) {
+func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connectionSignal chan string) {
+	reconnect := false
 	health := gjson.Get(getFromRPC("health"), "result")
 	t.Reset()
 	if health.Exists() {
-		if err := t.Write("🟢 good"); err != nil {
-			panic(err)
-		}
+		t.Write("🟢 good")
 	} else {
-		if err := t.Write("🔴 no connection"); err != nil {
-			panic(err)
-		}
+		t.Write("🔴 no connection")
 	}
 
 	ticker := time.NewTicker(delay)
@@ -322,15 +317,20 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration) {
 			health := gjson.Get(getFromRPC("health"), "result")
 			t.Reset()
 			if health.Exists() {
-				if err := t.Write("🟢 good"); err != nil {
-					panic(err)
+				t.Write("🟢 good")
+				if reconnect == true {
+					connectionSignal <- "reconnect"
+					connectionSignal <- "reconnect"
+					connectionSignal <- "reconnect"
+					reconnect = false
 				}
 			} else {
-				if err := t.Write("🔴 no connection"); err != nil {
-					panic(err)
+				t.Write("🔴 no connection")
+				if reconnect == false {
+					connectionSignal <- "no_connection"
+					reconnect = true
 				}
 			}
-
 		case <-ctx.Done():
 			return
 		}
@@ -342,6 +342,9 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration) {
 func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 	peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
 	t.Reset()
+	if peers != "" {
+		t.Write(peers)
+	}
 	if err := t.Write(peers); err != nil {
 		panic(err)
 	}
@@ -354,8 +357,8 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 		case <-ticker.C:
 			t.Reset()
 			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
-			if err := t.Write(peers); err != nil {
-				panic(err)
+			if peers != "" {
+				t.Write(peers)
 			}
 
 		case <-ctx.Done():
@@ -366,16 +369,10 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 
 // writeTransactions writes the latest Transactions to the transactionsWidget.
 // Exits when the context expires.
-func writeTransactions(ctx context.Context, t *text.Text) {
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-
+func writeTransactions(ctx context.Context, t *text.Text, connectionSignal <-chan string) {
 	port := *givenPort
 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
-	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
-		log.Fatal("Received connect error - ", err)
-	}
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
 		currentTime := time.Now()
@@ -386,17 +383,19 @@ func writeTransactions(ctx context.Context, t *text.Text) {
 		}
 	}
 
-	socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
-		log.Println("Disconnected from server ")
-		return
-	}
-
 	socket.Connect()
 
 	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='Tx'\"], \"id\": 2 }")
 
 	for {
 		select {
+		case s := <-connectionSignal:
+			if s == "no_connection" {
+				socket.Close()
+			}
+			if s == "reconnect" {
+				writeTransactions(ctx, t, connectionSignal)
+			}
 		case <-ctx.Done():
 			log.Println("interrupt")
 			socket.Close()
@@ -407,16 +406,10 @@ func writeTransactions(ctx context.Context, t *text.Text) {
 
 // writeBlocks writes the latest Block to the blocksWidget.
 // Exits when the context expires.
-func writeBlocks(ctx context.Context, t *text.Text) {
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
+func writeBlocks(ctx context.Context, t *text.Text, connectionSignal <-chan string) {
 
 	port := *givenPort
 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
-
-	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
-		log.Fatal("Received connect error - ", err)
-	}
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
@@ -428,17 +421,19 @@ func writeBlocks(ctx context.Context, t *text.Text) {
 
 	}
 
-	socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
-		log.Println("Disconnected from server ")
-		return
-	}
-
 	socket.Connect()
 
 	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='NewBlock'\"], \"id\": 1 }")
 
 	for {
 		select {
+		case s := <-connectionSignal:
+			if s == "no_connection" {
+				socket.Close()
+			}
+			if s == "reconnect" {
+				writeBlocks(ctx, t, connectionSignal)
+			}
 		case <-ctx.Done():
 			log.Println("interrupt")
 			socket.Close()
@@ -449,16 +444,9 @@ func writeBlocks(ctx context.Context, t *text.Text) {
 
 // writeValidators writes the current validator set to the validatoWidget
 // Exits when the context expires.
-func writeValidators(ctx context.Context, t *text.Text) {
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-
+func writeValidators(ctx context.Context, t *text.Text, connectionSignal <-chan string) {
 	port := *givenPort
 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
-
-	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
-		log.Fatal("Received connect error - ", err)
-	}
 
 	socket.OnConnected = func(socket gowebsocket.Socket) {
 		validators := gjson.Get(getFromRPC("validators"), "result.validators")
@@ -495,17 +483,19 @@ func writeValidators(ctx context.Context, t *text.Text) {
 		})
 	}
 
-	socket.OnDisconnected = func(err error, socket gowebsocket.Socket) {
-		log.Println("Disconnected from server ")
-		return
-	}
-
 	socket.Connect()
 
 	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='ValidatorSetUpdates'\"], \"id\": 3 }")
 
 	for {
 		select {
+		case s := <-connectionSignal:
+			if s == "no_connection" {
+				socket.Close()
+			}
+			if s == "reconnect" {
+				writeValidators(ctx, t, connectionSignal)
+			}
 		case <-ctx.Done():
 			log.Println("interrupt")
 			socket.Close()
