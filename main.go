@@ -315,7 +315,6 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 		select {
 		case <-ticker.C:
 			health := gjson.Get(getFromRPC("health"), "result")
-			t.Reset()
 			if health.Exists() {
 				t.Write("🟢 good")
 				if reconnect == true {
