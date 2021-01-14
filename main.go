@@ -21,6 +21,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"log"
@@ -525,9 +527,14 @@ func syncGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
 		select {
 		case <-ticker.C:
 
-			maxHeight := gjson.Get(getTendermintRPC("dump_consensus_state"), "result.round_state.height").Int()
+			maxHeight := gjson.Get(getTendermintRPC("consensus_state"), "result.round_state.height/round/step").String()
+			maxHeightOnly := strings.Split(maxHeight, "/")[0]
+			n, err := strconv.ParseInt(maxHeightOnly, 10, 64)
+			if err != nil {
+				panic(err)
+			}
 
-			progress = (blockHeight / maxHeight) * 100
+			progress = (blockHeight / n) * 100
 			if err := g.Absolute(int(progress), 100); err != nil {
 				panic(err)
 			}
