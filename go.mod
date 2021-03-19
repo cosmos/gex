@@ -1,6 +1,6 @@
-module github.com/tosch110/gex
+module github.com/cosmos/gex
 
-go 1.15
+go 1.16
 
 require (
 	github.com/OzqurYalcin/google-analytics v0.0.0-20201022181344-721c3dab31b5
