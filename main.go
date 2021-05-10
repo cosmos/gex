@@ -29,9 +29,9 @@ import (
 
 	"gopkg.in/resty.v1"
 
-	ga "github.com/OzqurYalcin/google-analytics/src"
 	"github.com/google/uuid"
 	"github.com/jedib0t/go-pretty/table"
+	ga "github.com/ozgur-soft/google-analytics/src"
 	"github.com/sacOO7/gowebsocket"
 	"github.com/tidwall/gjson"
 
