@@ -36,4 +36,4 @@ To manually run GEX, clone the `github.com/cosmos/gex` repository and then cd in
 
 Thanks for contributing!
 
-Check out the [CONTRIBUTING.md](./CONTRIBUTING.md) to learn about how to contribute and how the code is structured.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) to learn about how to contribute and how the code is structured.
