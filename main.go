@@ -49,8 +49,27 @@ const (
 
 var givenPort = flag.String("p", "26657", "port to connect to as a string")
 
+type Info struct {
+    blocks *Blocks
+}
+type Blocks struct {
+	amount int
+	seconds_passed int
+} 
+func incrInfoBlocks(i Info) {
+    i.blocks.amount++
+}
+func incrInfoSeconds(i Info) {
+    i.blocks.seconds_passed++
+}
+
 func main() {
 	view()
+
+	// Init internal variables
+	info := Info{}
+    info.blocks = new(Blocks)
+
 	connectionSignal := make(chan string)
 	t, err := termbox.New()
 	if err != nil {
@@ -134,25 +153,44 @@ func main() {
 		panic(err)
 	}
 
+	// create seconds per block widget
+	secondsPerBlockWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := blocksWidget.Write("0"); err != nil {
+		panic(err)
+	}
+
+	// create current network widget
+	currentNetworkWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := currentNetworkWidget.Write(networkStatus.Get("result.node_info.network").String()); err != nil {
+		panic(err)
+	}
+
 	// The functions that execute the updating widgets.
 
 	// system powered widgets
-	go writeTime(ctx, timeWidget, 1*time.Second)
+	go writeTime(ctx, info, timeWidget, 1*time.Second)
 
 	// rpc widgets
 	go writePeers(ctx, peerWidget, 1*time.Second)
 	go writeHealth(ctx, healthWidget, 500*time.Millisecond, connectionSignal)
+	go writeSecondsPerBlock(ctx, info, secondsPerBlockWidget, 1*time.Second)
 
 	// websocket powered widgets
 	go writeValidators(ctx, validatorWidget, connectionSignal)
-	go writeBlocks(ctx, blocksWidget, connectionSignal)
+	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
 	go writeTransactions(ctx, transactionWidget, connectionSignal)
 
 	// Draw Dashboard
 	c, err := container.New(
 		t,
 		container.Border(linestyle.Light),
-		container.BorderTitle("PRESS Q or ESC TO QUIT | Network "+networkStatus.Get("result.node_info.network").String()+" Version "+networkStatus.Get("result.node_info.version").String()),
+		container.BorderTitle("GEX: PRESS Q or ESC TO QUIT"),
 		container.BorderColor(cell.ColorNumber(2)),
 		container.SplitHorizontal(
 			container.Top(
@@ -165,13 +203,13 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Health"),
-												container.PlaceWidget(healthWidget),
+												container.BorderTitle("Network"),
+												container.PlaceWidget(currentNetworkWidget),
 											),
 											container.Right(
 												container.Border(linestyle.Light),
-												container.BorderTitle("System Time"),
-												container.PlaceWidget(timeWidget),
+												container.BorderTitle("Health"),
+												container.PlaceWidget(healthWidget),
 											),
 										),
 									),
@@ -179,8 +217,8 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Max Block Size"),
-												container.PlaceWidget(maxBlocksizeWidget),
+												container.BorderTitle("System Time"),
+												container.PlaceWidget(timeWidget),
 											),
 											container.Right(
 												container.Border(linestyle.Light),
@@ -193,6 +231,36 @@ func main() {
 							),
 							container.Bottom(
 								// INSERT NEW BOTTOM ROWS
+								container.SplitVertical(
+									container.Left(
+										container.SplitVertical(
+											container.Left(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Time between blocks"),
+												container.PlaceWidget(secondsPerBlockWidget),
+											),
+											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Max Block Size"),
+												container.PlaceWidget(maxBlocksizeWidget),
+											),
+										),
+									),
+									container.Right(
+										container.SplitVertical(
+											container.Left(
+												// container.Border(linestyle.Light),
+												// container.BorderTitle("Max Block Size"),
+												// container.PlaceWidget(maxBlocksizeWidget),
+											),
+											container.Right(
+												// container.Border(linestyle.Light),
+												// container.BorderTitle("Connected IBC Channels"),
+												// container.PlaceWidget(peerWidget),
+											),
+										),
+									),
+								),
 							),
 						),
 					),
@@ -245,7 +313,7 @@ func getFromRPC(endpoint string) string {
 
 // writeTime writes the current system time to the timeWidget.
 // Exits when the context expires.
-func writeTime(ctx context.Context, t *text.Text, delay time.Duration) {
+func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration) {
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
 
@@ -257,6 +325,7 @@ func writeTime(ctx context.Context, t *text.Text, delay time.Duration) {
 			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02\n03:04:05 PM"))); err != nil {
 				panic(err)
 			}
+			incrInfoSeconds(info)
 		case <-ctx.Done():
 			return
 		}
@@ -301,6 +370,31 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 					reconnect = true
 				}
 			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// writeSecondsPerBlock writes the status to the Time per block.
+// Exits when the context expires.
+func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay time.Duration) {
+
+	t.Reset()
+
+	ticker := time.NewTicker(delay)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			t.Reset()
+			blocksPerSecond := 0.00
+			if(info.blocks.seconds_passed != 0) {
+				blocksPerSecond = float64(info.blocks.amount) / float64(info.blocks.seconds_passed)
+			}
+			
+			t.Write(fmt.Sprintf("%.2f seconds", blocksPerSecond))
 		case <-ctx.Done():
 			return
 		}
@@ -378,7 +472,7 @@ func writeTransactions(ctx context.Context, t *text.Text, connectionSignal <-cha
 
 // writeBlocks writes the latest Block to the blocksWidget.
 // Exits when the context expires.
-func writeBlocks(ctx context.Context, t *text.Text, connectionSignal <-chan string) {
+func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
 
 	port := *givenPort
 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
@@ -389,6 +483,7 @@ func writeBlocks(ctx context.Context, t *text.Text, connectionSignal <-chan stri
 			if err := t.Write(fmt.Sprintf("%s\n", "Latest block height "+currentBlock.String())); err != nil {
 				panic(err)
 			}
+			incrInfoBlocks(info)
 		}
 
 	}
@@ -404,7 +499,7 @@ func writeBlocks(ctx context.Context, t *text.Text, connectionSignal <-chan stri
 				socket.Close()
 			}
 			if s == "reconnect" {
-				writeBlocks(ctx, t, connectionSignal)
+				writeBlocks(ctx, info, t, connectionSignal)
 			}
 		case <-ctx.Done():
 			log.Println("interrupt")
