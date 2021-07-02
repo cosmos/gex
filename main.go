@@ -21,8 +21,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	// "strconv"
-	// "strings"
 	"time"
 
 	"log"
@@ -70,12 +68,51 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Blocks parsing widget
-	blocksWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+
+	// Creates the initial text for the health widget
+	healthWidget, err := text.New()
 	if err != nil {
 		panic(err)
 	}
-	if err := blocksWidget.Write("Latest block height " + networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
+	if err := healthWidget.Write("🔴 no connection"); err != nil {
+		panic(err)
+	}
+
+	// Creates the initial text for the system time widget
+	timeWidget, err := text.New()
+	if err != nil {
+		panic(err)
+	}
+	currentTime := time.Now()
+	if err := timeWidget.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02\n03:04:05 PM"))); err != nil {
+		panic(err)
+	}
+
+	// Creates the initial text for the block size widget
+	maxBlocksizeWidget, err := text.New()
+	maxBlockSize := gjson.Get(getFromRPC("consensus_params"), "result.consensus_params.block.max_bytes").Int()
+	if err != nil {
+		panic(err)
+	}
+	if err := maxBlocksizeWidget.Write(fmt.Sprintf("%s", byteCountDecimal(maxBlockSize))); err != nil {
+		panic(err)
+	}
+
+	// Creates the initial text for the peer widget
+	peerWidget, err := text.New()
+	if err != nil {
+		panic(err)
+	}
+	if err := peerWidget.Write("0"); err != nil {
+		panic(err)
+	}
+
+	// validator widget
+	validatorWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := validatorWidget.Write("List available validators.\n\n"); err != nil {
 		panic(err)
 	}
 
@@ -87,48 +124,17 @@ func main() {
 	if err := transactionWidget.Write("Transactions will appear as soon as they are confirmed in a block.\n\n"); err != nil {
 		panic(err)
 	}
-
-	validatorWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	
+	// Blocks parsing widget
+	blocksWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
 		panic(err)
 	}
-	if err := validatorWidget.Write("List available validators.\n\n"); err != nil {
+	if err := blocksWidget.Write("Latest block height " + networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
 		panic(err)
 	}
 
-	peerWidget, err := text.New()
-	if err != nil {
-		panic(err)
-	}
-	if err := peerWidget.Write("0"); err != nil {
-		panic(err)
-	}
-
-	healthWidget, err := text.New()
-	if err != nil {
-		panic(err)
-	}
-	if err := healthWidget.Write("🔴 no connection"); err != nil {
-		panic(err)
-	}
-
-	timeWidget, err := text.New()
-	if err != nil {
-		panic(err)
-	}
-	currentTime := time.Now()
-	if err := timeWidget.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02\n03:04:05 PM"))); err != nil {
-		panic(err)
-	}
-
-	maxBlocksizeWidget, err := text.New()
-	maxBlockSize := gjson.Get(getFromRPC("consensus_params"), "result.consensus_params.block.max_bytes").Int()
-	if err != nil {
-		panic(err)
-	}
-	if err := maxBlocksizeWidget.Write(fmt.Sprintf("%s", byteCountDecimal(maxBlockSize))); err != nil {
-		panic(err)
-	}
+	// The functions that execute the updating widgets.
 
 	// system powered widgets
 	go writeTime(ctx, timeWidget, 1*time.Second)
