@@ -1,6 +1,5 @@
 // example websocket connection Blocks
-
-package main
+package websocket
 
 import (
 	"log"
