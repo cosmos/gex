@@ -10,6 +10,10 @@ import (
 	"github.com/sacOO7/gowebsocket"
 )
 
+func main() {
+	websocket()
+}
+
 func websocket() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
