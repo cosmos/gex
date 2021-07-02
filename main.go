@@ -236,7 +236,7 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Time between blocks"),
+												container.BorderTitle("s between blocks"),
 												container.PlaceWidget(secondsPerBlockWidget),
 											),
 											container.Right(
