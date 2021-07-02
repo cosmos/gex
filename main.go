@@ -394,7 +394,9 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 				blocksPerSecond = float64(info.blocks.seconds_passed) / float64(info.blocks.amount)
 			}
 			
-			t.Write(fmt.Sprintf("%.2f seconds", blocksPerSecond))
+			t.Write(fmt.Sprintf("%.2f seconds\n", blocksPerSecond))
+			t.Write(fmt.Sprintf("%.2f passed", float64(info.blocks.seconds_passed)))
+			t.Write(fmt.Sprintf("%.2f amount", float64(info.blocks.amount)))
 		case <-ctx.Done():
 			return
 		}
