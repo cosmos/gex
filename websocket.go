@@ -1,5 +1,6 @@
 // example websocket connection Blocks
-package websocket
+
+package main
 
 import (
 	"log"
@@ -9,9 +10,9 @@ import (
 	"github.com/sacOO7/gowebsocket"
 )
 
-func main() {
-	websocket()
-}
+// func main() {
+// 	websocket()
+// }
 
 func websocket() {
 	interrupt := make(chan os.Signal, 1)
