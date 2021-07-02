@@ -158,7 +158,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if err := blocksWidget.Write("0"); err != nil {
+	if err := secondsPerBlockWidget.Write("0"); err != nil {
 		panic(err)
 	}
 
