@@ -320,6 +320,7 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 	}
 
 	ticker := time.NewTicker(delay)
+	t.Reset()
 	defer ticker.Stop()
 
 	for {
@@ -328,6 +329,7 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 			t.Reset()
 			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
 			if peers != "" {
+				t.Reset()
 				t.Write(peers)
 			}
 
