@@ -21,8 +21,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"strconv"
-	"strings"
+	// "strconv"
+	// "strings"
 	"time"
 
 	"log"
@@ -42,13 +42,11 @@ import (
 	"github.com/mum4k/termdash/linestyle"
 	"github.com/mum4k/termdash/terminal/termbox"
 	"github.com/mum4k/termdash/terminal/terminalapi"
-	"github.com/mum4k/termdash/widgets/gauge"
 	"github.com/mum4k/termdash/widgets/text"
 )
 
 const (
 	appRPC        = "http://localhost"
-	tendermintRPC = "https://rpc.cosmos.network/"
 )
 
 var givenPort = flag.String("p", "26657", "port to connect to as a string")
@@ -144,32 +142,6 @@ func main() {
 	go writeBlocks(ctx, blocksWidget, connectionSignal)
 	go writeTransactions(ctx, transactionWidget, connectionSignal)
 
-	// blockchain download gauge
-	syncWidget, err := gauge.New(
-		gauge.Height(1),
-		gauge.Color(cell.ColorBlue),
-		gauge.Border(linestyle.Light),
-		gauge.BorderTitle("Blockchain download %"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	if networkStatus.Get("result.sync_info.catching_up").String() == "false" {
-		if err := syncWidget.Absolute(100, 100); err != nil {
-			panic(err)
-		}
-	} else {
-		if networkStatus.Get("result.node_info.network").String() == "cosmoshub-3" {
-			go syncGauge(ctx, syncWidget, networkStatus.Get("result.sync_info.latest_block_height").Int())
-		} else {
-			// There is no way to detect maximum height in the network via RPC or websocket yet
-			if err := syncWidget.Absolute(70, 100); err != nil {
-				panic(err)
-			}
-		}
-	}
-
 	// Draw Dashboard
 	c, err := container.New(
 		t,
@@ -214,7 +186,7 @@ func main() {
 								),
 							),
 							container.Bottom(
-								container.PlaceWidget(syncWidget),
+								// INSERT NEW BOTTOM ROWS
 							),
 						),
 					),
@@ -265,19 +237,6 @@ func getFromRPC(endpoint string) string {
 	return resp.String()
 }
 
-func getTendermintRPC(endpoint string) string {
-	resp, err := resty.R().
-		SetHeader("Cache-Control", "no-cache").
-		SetHeader("Content-Type", "application/json").
-		Get(tendermintRPC + endpoint)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return resp.String()
-}
-
 // writeTime writes the current system time to the timeWidget.
 // Exits when the context expires.
 func writeTime(ctx context.Context, t *text.Text, delay time.Duration) {
@@ -305,9 +264,9 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 	health := gjson.Get(getFromRPC("health"), "result")
 	t.Reset()
 	if health.Exists() {
-		t.Write("🟢 good")
+		t.Write("✔️ good")
 	} else {
-		t.Write("🔴 no connection")
+		t.Write("✖️ not running")
 	}
 
 	ticker := time.NewTicker(delay)
@@ -318,7 +277,8 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 		case <-ticker.C:
 			health := gjson.Get(getFromRPC("health"), "result")
 			if health.Exists() {
-				t.Write("🟢 good")
+				t.Reset()
+				t.Write("✔️ good")
 				if reconnect == true {
 					connectionSignal <- "reconnect"
 					connectionSignal <- "reconnect"
@@ -326,7 +286,8 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 					reconnect = false
 				}
 			} else {
-				t.Write("🔴 no connection")
+				t.Reset()
+				t.Write("✖️ not running")
 				if reconnect == false {
 					connectionSignal <- "no_connection"
 					connectionSignal <- "no_connection"
@@ -502,35 +463,6 @@ func writeValidators(ctx context.Context, t *text.Text, connectionSignal <-chan 
 		case <-ctx.Done():
 			log.Println("interrupt")
 			socket.Close()
-			return
-		}
-	}
-}
-
-// syncGauge displays the syncing status in the syncWidget
-// Exits when the context expires.
-func syncGauge(ctx context.Context, g *gauge.Gauge, blockHeight int64) {
-	var progress int64 = 0
-
-	ticker := time.NewTicker(1000 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-
-			maxHeight := gjson.Get(getTendermintRPC("consensus_state"), "result.round_state.height/round/step").String()
-			maxHeightOnly := strings.Split(maxHeight, "/")[0]
-			n, err := strconv.ParseInt(maxHeightOnly, 10, 64)
-			if err != nil {
-				panic(err)
-			}
-
-			progress = (blockHeight / n) * 100
-			if err := g.Absolute(int(progress), 100); err != nil {
-				panic(err)
-			}
-
-		case <-ctx.Done():
 			return
 		}
 	}
