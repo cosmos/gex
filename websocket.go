@@ -1,6 +1,6 @@
-// example websocket connection Blocks
-
 package main
+
+// example websocket connection to blocks
 
 import (
 	"log"
