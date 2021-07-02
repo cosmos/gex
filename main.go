@@ -93,7 +93,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if err := healthWidget.Write("🔴 no connection"); err != nil {
+	if err := healthWidget.Write("⌛ loading"); err != nil {
 		panic(err)
 	}
 
@@ -341,7 +341,7 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 	if health.Exists() {
 		t.Write("✔️ good")
 	} else {
-		t.Write("✖️ not running")
+		t.Write("✖️ not connected")
 	}
 
 	ticker := time.NewTicker(delay)
@@ -362,7 +362,7 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 				}
 			} else {
 				t.Reset()
-				t.Write("✖️ not running")
+				t.Write("✖️ not connected")
 				if reconnect == false {
 					connectionSignal <- "no_connection"
 					connectionSignal <- "no_connection"
@@ -391,7 +391,7 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 			t.Reset()
 			blocksPerSecond := 0.00
 			if(info.blocks.seconds_passed != 0) {
-				blocksPerSecond = float64(info.blocks.amount) / float64(info.blocks.seconds_passed)
+				blocksPerSecond = float64(info.blocks.seconds_passed) / float64(info.blocks.amount)
 			}
 			
 			t.Write(fmt.Sprintf("%.2f seconds", blocksPerSecond))
