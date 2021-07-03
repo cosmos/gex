@@ -30,7 +30,7 @@ Configure an optional port, instead of using the default RPC port `26657`
 
 ![Terminal Screenshot](./screenshot.png "Screenshot Application")
 
-## Run Manually
+## Run In Development
 
 To manually run GEX, clone the `github.com/cosmos/gex` repository and then cd into the `gex` directory. Then to run GEX manually, type this command in a terminal window:
 
