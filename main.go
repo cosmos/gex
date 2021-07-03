@@ -43,27 +43,30 @@ import (
 	"github.com/mum4k/termdash/widgets/donut"
 )
 
-// playType indicates how to play a donut.
-type playType int
-
 const (
+	// RPC requests are made to the native app running
 	appRPC        = "http://localhost"
+	// donut widget constants
 	playTypePercent playType = iota
 	playTypeAbsolute
 )
 
+// optional port variable. example: `gex -p 30057`
 var givenPort = flag.String("p", "26657", "port to connect to as a string")
 
-// Info describes Info that we might want to use in the explorer
+// Info describes a list of types with data that are used in the explorer
 type Info struct {
 	blocks *Blocks
 }
 
-// Blocks describe content that we parse for a block
+// Blocks describe content that gets parsed for a block
 type Blocks struct {
 	amount int
 	secondsPassed int
 } 
+
+// playType indicates the type of the donut widget.
+type playType int
 
 func main() {
 	view()
