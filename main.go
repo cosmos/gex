@@ -692,7 +692,7 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 				panic(err)
 			}
 			info.blocks.amount++
-			info.blocks.maxGasWanted = gjson.Get(message, "result.data.value.result_end_block.consensus_param_updates.max_gas").Int()
+			info.blocks.maxGasWanted = gjson.Get(message, "result.data.value.result_end_block.consensus_param_updates.block.max_gas").Int()
 		}
 
 	}
