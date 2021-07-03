@@ -63,6 +63,10 @@ type Info struct {
 type Blocks struct {
 	amount int
 	secondsPassed int
+	totalGasWanted int64
+	gasWantedLatestBlock int64
+	maxGasWanted int64
+	lastTx int64
 } 
 
 // playType indicates the type of the donut widget.
@@ -90,12 +94,23 @@ func main() {
 		panic("Application not running on localhost:" + fmt.Sprintf("%s", *givenPort))
 	}
 
+	genesisInfo := gjson.Parse(getFromRPC("genesis"))
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 
 	// START INITIALISING WIDGETS
 
-	// Creates the initial text for the health widget
+	// Creates Network Widget
+	currentNetworkWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := currentNetworkWidget.Write(networkStatus.Get("result.node_info.network").String()); err != nil {
+		panic(err)
+	}
+
+	// Creates Health Widget
 	healthWidget, err := text.New()
 	if err != nil {
 		panic(err)
@@ -104,7 +119,7 @@ func main() {
 		panic(err)
 	}
 
-	// Creates the initial text for the system time widget
+	// Creates System Time Widget
 	timeWidget, err := text.New()
 	if err != nil {
 		panic(err)
@@ -114,7 +129,25 @@ func main() {
 		panic(err)
 	}
 
-	// Creates the initial text for the block size widget
+	// Creates Connected Peers Widget
+	peerWidget, err := text.New()
+	if err != nil {
+		panic(err)
+	}
+	if err := peerWidget.Write("0"); err != nil {
+		panic(err)
+	}
+
+	// Creates Seconds Between Blocks Widget
+	secondsPerBlockWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := secondsPerBlockWidget.Write("0"); err != nil {
+		panic(err)
+	}
+
+	// Creates Max Block Size Widget
 	maxBlocksizeWidget, err := text.New()
 	maxBlockSize := gjson.Get(getFromRPC("consensus_params"), "result.consensus_params.block.max_bytes").Int()
 	if err != nil {
@@ -124,16 +157,7 @@ func main() {
 		panic(err)
 	}
 
-	// Creates the initial text for the peer widget
-	peerWidget, err := text.New()
-	if err != nil {
-		panic(err)
-	}
-	if err := peerWidget.Write("0"); err != nil {
-		panic(err)
-	}
-
-	// validator widget
+	// Creates Validators widget
 	validatorWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
 		panic(err)
@@ -141,6 +165,17 @@ func main() {
 	if err := validatorWidget.Write("List available validators.\n\n"); err != nil {
 		panic(err)
 	}
+
+	// Creates Validators widget
+	gasWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := gasWidget.Write("How much gas.\n\n"); err != nil {
+		panic(err)
+	}
+
+	// BIG WIDGETS
 
 	// Block Status Donut widget
 	green, err := donut.New(
@@ -165,27 +200,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if err := blocksWidget.Write("Latest block height " + networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
+	if err := blocksWidget.Write(networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
 		panic(err)
 	}
 
-	// create seconds per block widget
-	secondsPerBlockWidget, err := text.New(text.RollContent(), text.WrapAtWords())
-	if err != nil {
-		panic(err)
-	}
-	if err := secondsPerBlockWidget.Write("0"); err != nil {
-		panic(err)
-	}
-
-	// create current network widget
-	currentNetworkWidget, err := text.New(text.RollContent(), text.WrapAtWords())
-	if err != nil {
-		panic(err)
-	}
-	if err := currentNetworkWidget.Write(networkStatus.Get("result.node_info.network").String()); err != nil {
-		panic(err)
-	}
 
 	// END INITIALISING WIDGETS
 
@@ -199,10 +217,11 @@ func main() {
 	go writeHealth(ctx, healthWidget, 500*time.Millisecond, connectionSignal)
 	go writeSecondsPerBlock(ctx, info, secondsPerBlockWidget, 1*time.Second)
 	go writeAmountValidators(ctx, validatorWidget, 1000*time.Millisecond, connectionSignal)
+	go writeGasWidget(ctx, info, gasWidget, 1000*time.Millisecond, connectionSignal, genesisInfo)
 
 	// websocket powered widgets
 	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
-	go writeTransactions(ctx, transactionWidget, connectionSignal)
+	go writeTransactions(ctx, info, transactionWidget, connectionSignal)
 	go writeBlockDonut(ctx, green, 0, 20, 1000*time.Millisecond, playTypePercent, connectionSignal)
 
 	// Draw Dashboard
@@ -273,6 +292,9 @@ func main() {
 												container.PlaceWidget(validatorWidget),
 											),
 											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Max / Ø / Last Tx"),
+												container.PlaceWidget(gasWidget),
 											),
 										),
 									),
@@ -436,6 +458,52 @@ func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duratio
 	}
 }
 
+// writeGasWidget writes the status to the healthWidget.
+// Exits when the context expires.
+func writeGasWidget(ctx context.Context, info Info, t *text.Text, delay time.Duration, connectionSignal chan string, genesisInfo gjson.Result) {
+	t.Write("0 / 0 / 0")
+
+	ticker := time.NewTicker(delay)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// validators := gjson.Get(getFromRPC("validators"), "result")
+			// if validators.Exists() {
+			// 	t.Reset()
+			// 	t.Write(validators.Get("total").String())
+			// 	if reconnect == true {
+			// 		connectionSignal <- "reconnect"
+			// 		connectionSignal <- "reconnect"
+			// 		connectionSignal <- "reconnect"
+			// 		reconnect = false
+			// 	}
+			// } else {
+			// 	t.Reset()
+			// 	t.Write("0")
+			// 	if reconnect == false {
+			// 		connectionSignal <- "no_connection"
+			// 		connectionSignal <- "no_connection"
+			// 		connectionSignal <- "no_connection"
+			// 		reconnect = true
+			// 	}
+			// }
+			t.Reset()
+
+			totalGasWanted := uint64(info.blocks.totalGasWanted)
+			totalBlocks := uint64(info.blocks.amount)
+			totalGasPerBlock := uint64( totalGasWanted / totalBlocks )
+
+			maxGas := genesisInfo.Get("result.genesis.consensus_params.block.max_gas").Int()
+
+			t.Write( fmt.Sprintf("%d", maxGas) + " / " + fmt.Sprintf("%d", totalGasPerBlock) + " / " + fmt.Sprintf("%d", info.blocks.lastTx))
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 // writeSecondsPerBlock writes the status to the Time per block.
 // Exits when the context expires.
 func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay time.Duration) {
@@ -495,7 +563,7 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 
 // writeTransactions writes the latest Transactions to the transactionsWidget.
 // Exits when the context expires.
-func writeTransactions(ctx context.Context, t *text.Text, connectionSignal <-chan string) {
+func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
 	port := *givenPort
 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
@@ -506,6 +574,9 @@ func writeTransactions(ctx context.Context, t *text.Text, connectionSignal <-cha
 			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02 03:04:05 PM")+"\n"+currentTx.String())); err != nil {
 				panic(err)
 			}
+
+			info.blocks.totalGasWanted = info.blocks.totalGasWanted + gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
+			info.blocks.lastTx = gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
 		}
 	}
 
@@ -520,7 +591,7 @@ func writeTransactions(ctx context.Context, t *text.Text, connectionSignal <-cha
 				socket.Close()
 			}
 			if s == "reconnect" {
-				writeTransactions(ctx, t, connectionSignal)
+				writeTransactions(ctx, info, t, connectionSignal)
 			}
 		case <-ctx.Done():
 			log.Println("interrupt")
@@ -540,7 +611,8 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
 		if currentBlock.String() != "" {
-			if err := t.Write(fmt.Sprintf("%s\n", "Latest block height "+currentBlock.String())); err != nil {
+			err := t.Write(fmt.Sprintf("%s\n", currentBlock.String())); 
+			if err != nil {
 				panic(err)
 			}
 			incrInfoBlocks(info)
