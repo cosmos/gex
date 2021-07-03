@@ -164,7 +164,7 @@ func main() {
 		panic(err)
 	}
 	
-	// Blocks parsing widget
+	// Create Blocks parsing widget
 	blocksWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
 		panic(err)
@@ -202,6 +202,7 @@ func main() {
 	go writePeers(ctx, peerWidget, 1*time.Second)
 	go writeHealth(ctx, healthWidget, 500*time.Millisecond, connectionSignal)
 	go writeSecondsPerBlock(ctx, info, secondsPerBlockWidget, 1*time.Second)
+	go writeAmountValidators(ctx, validatorWidget, 1000*time.Millisecond, connectionSignal)
 
 	// websocket powered widgets
 	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
@@ -271,6 +272,9 @@ func main() {
 									container.Right(
 										container.SplitVertical(
 											container.Left(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Validators"),
+												container.PlaceWidget(validatorWidget),
 											),
 											container.Right(
 											),
@@ -379,6 +383,50 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 			} else {
 				t.Reset()
 				t.Write("✖️ not connected")
+				if reconnect == false {
+					connectionSignal <- "no_connection"
+					connectionSignal <- "no_connection"
+					connectionSignal <- "no_connection"
+					reconnect = true
+				}
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// writeAmountValidators writes the status to the healthWidget.
+// Exits when the context expires.
+func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duration, connectionSignal chan string) {
+	reconnect := false
+	validators := gjson.Get(getFromRPC("validators"), "result")
+	t.Reset()
+	if validators.Exists() {
+		t.Write("0 / 0")
+	} else {
+		t.Write("0 / 0")
+	}
+
+	ticker := time.NewTicker(delay)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			validators := gjson.Get(getFromRPC("validators"), "result")
+			if validators.Exists() {
+				t.Reset()
+				t.Write(validators.Get("count").String() + " / " + validators.Get("total").String())
+				if reconnect == true {
+					connectionSignal <- "reconnect"
+					connectionSignal <- "reconnect"
+					connectionSignal <- "reconnect"
+					reconnect = false
+				}
+			} else {
+				t.Reset()
+				t.Write("0 / 0")
 				if reconnect == false {
 					connectionSignal <- "no_connection"
 					connectionSignal <- "no_connection"
