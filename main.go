@@ -57,7 +57,6 @@ var givenPort = flag.String("p", "26657", "port to connect to as a string")
 // Info describes Info that we might want to use in the explorer
 type Info struct {
 	blocks *Blocks
-	validators *Validators
 }
 
 // Blocks describe content that we parse for a block
@@ -66,18 +65,12 @@ type Blocks struct {
 	secondsPassed int
 } 
 
-// Validators describe the Validator info
-type Validators struct {
-	amount int
-}
-
 func main() {
 	view()
 
 	// Init internal variables
 	info := Info{}
 	info.blocks = new(Blocks)
-	info.validators = new(Validators)
 
 	connectionSignal := make(chan string)
 	t, err := termbox.New()
@@ -403,9 +396,9 @@ func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duratio
 	validators := gjson.Get(getFromRPC("validators"), "result")
 	t.Reset()
 	if validators.Exists() {
-		t.Write("0 / 0")
+		t.Write("0")
 	} else {
-		t.Write("0 / 0")
+		t.Write("0")
 	}
 
 	ticker := time.NewTicker(delay)
@@ -417,7 +410,7 @@ func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duratio
 			validators := gjson.Get(getFromRPC("validators"), "result")
 			if validators.Exists() {
 				t.Reset()
-				t.Write(validators.Get("count").String() + " / " + validators.Get("total").String())
+				t.Write(validators.Get("total").String())
 				if reconnect == true {
 					connectionSignal <- "reconnect"
 					connectionSignal <- "reconnect"
@@ -426,7 +419,7 @@ func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duratio
 				}
 			} else {
 				t.Reset()
-				t.Write("0 / 0")
+				t.Write("0")
 				if reconnect == false {
 					connectionSignal <- "no_connection"
 					connectionSignal <- "no_connection"
@@ -672,8 +665,4 @@ func incrInfoBlocks(i Info) {
 
 func incrInfoSeconds(i Info) {
     i.blocks.secondsPassed++
-}
-
-func incrInfoValidators(i Info) {
-    i.validators.amount++
 }
