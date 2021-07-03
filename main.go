@@ -140,7 +140,7 @@ func main() {
 	// Block Status Donut widget
 	green, err := donut.New(
 		donut.CellOpts(cell.FgColor(cell.ColorGreen)),
-		donut.Label("New block status", cell.FgColor(cell.ColorGreen)),
+		donut.Label("New Block Status", cell.FgColor(cell.ColorGreen)),
 	)
 	if err != nil {
 		panic(err)
@@ -247,7 +247,7 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("s between blocks"),
+												container.BorderTitle("s Between Blocks"),
 												container.PlaceWidget(secondsPerBlockWidget),
 											),
 											container.Right(
