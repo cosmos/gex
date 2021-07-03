@@ -56,7 +56,8 @@ var givenPort = flag.String("p", "26657", "port to connect to as a string")
 
 // Info describes Info that we might want to use in the explorer
 type Info struct {
-    blocks *Blocks
+	blocks *Blocks
+	validators *Validators
 }
 
 // Blocks describe content that we parse for a block
@@ -65,12 +66,18 @@ type Blocks struct {
 	secondsPassed int
 } 
 
+// Validators describe the Validator info
+type Validators struct {
+	amount int
+}
+
 func main() {
 	view()
 
 	// Init internal variables
 	info := Info{}
-    info.blocks = new(Blocks)
+	info.blocks = new(Blocks)
+	info.validators = new(Validators)
 
 	connectionSignal := make(chan string)
 	t, err := termbox.New()
@@ -617,4 +624,8 @@ func incrInfoBlocks(i Info) {
 
 func incrInfoSeconds(i Info) {
     i.blocks.secondsPassed++
+}
+
+func incrInfoValidators(i Info) {
+    i.validators.amount++
 }

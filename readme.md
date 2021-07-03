@@ -18,13 +18,17 @@ To launch a GEX explorer in your terminal window, type:
 
 `gex`
 
+and hit enter.
+
 ## Optional Port
+
+Configure an optional port, instead of using the default RPC port `26657`
 
 `gex -p 27657`
 
 ## Sneak Peak
 
-![Terminal](./render.gif "Render Terminal")
+![Terminal Screenshot](./screenshot.png "Screenshot Application")
 
 ## Run Manually
 
@@ -34,6 +38,6 @@ To manually run GEX, clone the `github.com/cosmos/gex` repository and then cd in
 
 ## Contribute
 
-Thanks for contributing!
-
 See [CONTRIBUTING.md](./CONTRIBUTING.md) to learn about how to contribute and how the code is structured.
+
+Thanks for contributing!
