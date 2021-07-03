@@ -10,6 +10,10 @@ import (
 	"github.com/sacOO7/gowebsocket"
 )
 
+func main() {
+	websocket()
+}
+
 func websocket() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
@@ -43,7 +47,7 @@ func websocket() {
 
 	socket.Connect()
 
-	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='NewBlock'\"], \"id\": 1 }")
+	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='NewRoundStep'\"], \"id\": 3 }")
 
 	for {
 		select {
