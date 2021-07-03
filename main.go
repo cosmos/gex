@@ -684,7 +684,7 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
-		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
+		currentBlock := gjson.Get(message, "result.data.value.block.result_begin_block")
 		if currentBlock.String() != "" {
 			t.Reset()
 			err := t.Write(fmt.Sprintf("%v", numberWithComma(int64(currentBlock.Int())))); 
@@ -692,6 +692,7 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 				panic(err)
 			}
 			info.blocks.amount++
+			info.blocks.maxGasWanted = gjson.Get(message, "result.data.value.result_end_block.consensus_param_updates.max_gas").Int()
 		}
 
 	}
