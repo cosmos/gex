@@ -57,9 +57,10 @@ var givenPort = flag.String("p", "26657", "port to connect to as a string")
 // Info describes a list of types with data that are used in the explorer
 type Info struct {
 	blocks *Blocks
+	transactions *Transactions
 }
 
-// Blocks describe content that gets parsed for a block
+// Blocks describe content that gets parsed for blocks
 type Blocks struct {
 	amount int
 	secondsPassed int
@@ -68,6 +69,11 @@ type Blocks struct {
 	maxGasWanted int64
 	lastTx int64
 } 
+
+// Transactions describe content that gets parsed for transactions
+type Transactions struct {
+	amount uint64
+}
 
 // playType indicates the type of the donut widget.
 type playType int
@@ -78,6 +84,7 @@ func main() {
 	// Init internal variables
 	info := Info{}
 	info.blocks = new(Blocks)
+	info.transactions = new(Transactions)
 
 	connectionSignal := make(chan string)
 	t, err := termbox.New()
@@ -167,11 +174,35 @@ func main() {
 	}
 
 	// Creates Validators widget
-	gasWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	gasMaxWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
 		panic(err)
 	}
-	if err := gasWidget.Write("How much gas.\n\n"); err != nil {
+	if err := gasMaxWidget.Write("How much gas.\n\n"); err != nil {
+		panic(err)
+	}
+
+	gasAvgBlockWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := gasAvgBlockWidget.Write("How much gas.\n\n"); err != nil {
+		panic(err)
+	}
+
+	gasAvgTransactionWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := gasAvgTransactionWidget.Write("How much gas.\n\n"); err != nil {
+		panic(err)
+	}
+
+	latestGasWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := latestGasWidget.Write("How much gas.\n\n"); err != nil {
 		panic(err)
 	}
 
@@ -217,7 +248,7 @@ func main() {
 	go writeHealth(ctx, healthWidget, 500*time.Millisecond, connectionSignal)
 	go writeSecondsPerBlock(ctx, info, secondsPerBlockWidget, 1*time.Second)
 	go writeAmountValidators(ctx, validatorWidget, 1000*time.Millisecond, connectionSignal)
-	go writeGasWidget(ctx, info, gasWidget, 1000*time.Millisecond, connectionSignal, genesisInfo)
+	go writeGasWidget(ctx, info, gasMaxWidget, gasAvgBlockWidget, gasAvgTransactionWidget, latestGasWidget, 1000*time.Millisecond, connectionSignal, genesisInfo)
 
 	// websocket powered widgets
 	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
@@ -274,8 +305,9 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("s Between Blocks"),
-												container.PlaceWidget(secondsPerBlockWidget),
+												container.BorderTitle("Latest Block"),
+												container.PlaceWidget(blocksWidget),
+												
 											),
 											container.Right(
 												container.Border(linestyle.Light),
@@ -288,13 +320,13 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Validators"),
-												container.PlaceWidget(validatorWidget),
+												container.BorderTitle("s Between Blocks"),
+												container.PlaceWidget(secondsPerBlockWidget),
 											),
 											container.Right(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Gas Max / Ø / Last Tx"),
-												container.PlaceWidget(gasWidget),
+												container.BorderTitle("Validators"),
+												container.PlaceWidget(validatorWidget),
 											),
 										),
 									),
@@ -311,10 +343,47 @@ func main() {
 			),
 			container.Bottom(
 				container.SplitVertical(
+					
 					container.Left(
-						container.Border(linestyle.Light),
-						container.BorderTitle("Latest Blocks"),
-						container.PlaceWidget(blocksWidget),
+						container.SplitHorizontal(
+							container.Top(
+								container.SplitVertical(
+									container.Left(
+										container.SplitVertical(
+											container.Left(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Max"),
+												container.PlaceWidget(gasMaxWidget),
+											),
+											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Ø per Block"),
+												container.PlaceWidget(gasAvgBlockWidget),
+											),
+										),
+										
+									),
+									container.Right(
+										container.SplitVertical(
+											container.Left(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Ø per Tx"),
+												container.PlaceWidget(gasAvgTransactionWidget),
+											),
+											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Latest Tx"),
+												container.PlaceWidget(latestGasWidget),
+											),
+										),
+										
+									),
+								),
+							),
+							container.Bottom(
+								//empty
+							),
+						),
 					), container.Right(
 						container.Border(linestyle.Light),
 						container.BorderTitle("Latest Confirmed Transactions"),
@@ -363,7 +432,7 @@ func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration
 			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02\n03:04:05 PM"))); err != nil {
 				panic(err)
 			}
-			incrInfoSeconds(info)
+			info.blocks.secondsPassed++
 		case <-ctx.Done():
 			return
 		}
@@ -460,8 +529,11 @@ func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duratio
 
 // writeGasWidget writes the status to the healthWidget.
 // Exits when the context expires.
-func writeGasWidget(ctx context.Context, info Info, t *text.Text, delay time.Duration, connectionSignal chan string, genesisInfo gjson.Result) {
-	t.Write("0 / 0 / 0")
+func writeGasWidget(ctx context.Context, info Info, tMax *text.Text, tAvgBlock *text.Text, tAvgTx *text.Text, tLatest *text.Text, delay time.Duration, connectionSignal chan string, genesisInfo gjson.Result) {
+	tMax.Write("0")
+	tAvgBlock.Write("0")
+	tLatest.Write("0")
+	tAvgTx.Write("0")
 
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
@@ -469,27 +541,10 @@ func writeGasWidget(ctx context.Context, info Info, t *text.Text, delay time.Dur
 	for {
 		select {
 		case <-ticker.C:
-			// validators := gjson.Get(getFromRPC("validators"), "result")
-			// if validators.Exists() {
-			// 	t.Reset()
-			// 	t.Write(validators.Get("total").String())
-			// 	if reconnect == true {
-			// 		connectionSignal <- "reconnect"
-			// 		connectionSignal <- "reconnect"
-			// 		connectionSignal <- "reconnect"
-			// 		reconnect = false
-			// 	}
-			// } else {
-			// 	t.Reset()
-			// 	t.Write("0")
-			// 	if reconnect == false {
-			// 		connectionSignal <- "no_connection"
-			// 		connectionSignal <- "no_connection"
-			// 		connectionSignal <- "no_connection"
-			// 		reconnect = true
-			// 	}
-			// }
-			t.Reset()
+			tMax.Reset()
+			tAvgBlock.Reset()
+			tAvgTx.Reset()
+			tLatest.Reset()
 
 			totalGasWanted := uint64(info.blocks.totalGasWanted)
 			totalBlocks := uint64(info.blocks.amount)
@@ -499,11 +554,23 @@ func writeGasWidget(ctx context.Context, info Info, t *text.Text, delay time.Dur
 			if(totalBlocks > 0) {
 				totalGasPerBlock = uint64( totalGasWanted / totalBlocks )
 			}
+
+
+			totalTransactions := uint64(info.transactions.amount)
+
+			// don't divide by 0
+			averageGasPerTx := uint64(0)
+			if(totalTransactions > 0) {
+				averageGasPerTx = uint64( totalGasWanted / info.transactions.amount)
+			}
 			
 
 			maxGas := genesisInfo.Get("result.genesis.consensus_params.block.max_gas").Int()
 
-			t.Write( fmt.Sprintf("%d", maxGas) + " / " + fmt.Sprintf("%d", totalGasPerBlock) + " / " + fmt.Sprintf("%d", info.blocks.lastTx))
+			tMax.Write(fmt.Sprintf("%d", maxGas))
+			tAvgBlock.Write(fmt.Sprintf("%d", totalGasPerBlock))
+			tLatest.Write(fmt.Sprintf("%d", info.blocks.lastTx))
+			tAvgTx.Write(fmt.Sprintf("%d", averageGasPerTx))
 		case <-ctx.Done():
 			return
 		}
@@ -583,6 +650,7 @@ func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionS
 
 			info.blocks.totalGasWanted = info.blocks.totalGasWanted + gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
 			info.blocks.lastTx = gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
+			info.transactions.amount++
 		}
 	}
 
@@ -617,11 +685,12 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
 		if currentBlock.String() != "" {
-			err := t.Write(fmt.Sprintf("%s\n", currentBlock.String())); 
+			t.Reset()
+			err := t.Write(fmt.Sprintf("%s", currentBlock.String())); 
 			if err != nil {
 				panic(err)
 			}
-			incrInfoBlocks(info)
+			info.blocks.amount++
 		}
 
 	}
@@ -738,12 +807,4 @@ func byteCountDecimal(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
-}
-
-func incrInfoBlocks(i Info) {
-    i.blocks.amount++
-}
-
-func incrInfoSeconds(i Info) {
-    i.blocks.secondsPassed++
 }
