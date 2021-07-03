@@ -493,7 +493,13 @@ func writeGasWidget(ctx context.Context, info Info, t *text.Text, delay time.Dur
 
 			totalGasWanted := uint64(info.blocks.totalGasWanted)
 			totalBlocks := uint64(info.blocks.amount)
-			totalGasPerBlock := uint64( totalGasWanted / totalBlocks )
+			totalGasPerBlock := uint64(0)
+
+			// don't divide by 0
+			if(totalBlocks > 0) {
+				totalGasPerBlock = uint64( totalGasWanted / totalBlocks )
+			}
+			
 
 			maxGas := genesisInfo.Get("result.genesis.consensus_params.block.max_gas").Int()
 
