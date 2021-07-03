@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"time"
+	"strconv"
 
 	"log"
 
@@ -567,10 +568,10 @@ func writeGasWidget(ctx context.Context, info Info, tMax *text.Text, tAvgBlock *
 
 			maxGas := genesisInfo.Get("result.genesis.consensus_params.block.max_gas").Int()
 
-			tMax.Write(fmt.Sprintf("%d", maxGas))
-			tAvgBlock.Write(fmt.Sprintf("%d", totalGasPerBlock))
-			tLatest.Write(fmt.Sprintf("%d", info.blocks.lastTx))
-			tAvgTx.Write(fmt.Sprintf("%d", averageGasPerTx))
+			tMax.Write(fmt.Sprintf("%v", numberWithComma(maxGas)))
+			tAvgBlock.Write(fmt.Sprintf("%v", numberWithComma(int64(totalGasPerBlock))))
+			tLatest.Write(fmt.Sprintf("%v", numberWithComma(info.blocks.lastTx)))
+			tAvgTx.Write(fmt.Sprintf("%v", numberWithComma(int64(averageGasPerTx))))
 		case <-ctx.Done():
 			return
 		}
@@ -686,7 +687,7 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
 		if currentBlock.String() != "" {
 			t.Reset()
-			err := t.Write(fmt.Sprintf("%s", currentBlock.String())); 
+			err := t.Write(fmt.Sprintf("%v", numberWithComma(int64(currentBlock.Int())))); 
 			if err != nil {
 				panic(err)
 			}
@@ -807,4 +808,29 @@ func byteCountDecimal(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+}
+
+func numberWithComma(n int64) string {
+    in := strconv.FormatInt(n, 10)
+    numOfDigits := len(in)
+    if n < 0 {
+        numOfDigits-- // First character is the - sign (not a digit)
+    }
+    numOfCommas := (numOfDigits - 1) / 3
+
+    out := make([]byte, len(in)+numOfCommas)
+    if n < 0 {
+        in, out[0] = in[1:], '-'
+    }
+
+    for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
+        out[j] = in[i]
+        if i == 0 {
+            return string(out)
+        }
+        if k++; k == 3 {
+            j, k = j-1, 0
+            out[j] = ','
+        }
+    }
 }
