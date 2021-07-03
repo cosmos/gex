@@ -90,6 +90,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 
+	// START INITIALISING WIDGETS
+
 	// Creates the initial text for the health widget
 	healthWidget, err := text.New()
 	if err != nil {
@@ -182,6 +184,8 @@ func main() {
 		panic(err)
 	}
 
+	// END INITIALISING WIDGETS
+
 	// The functions that execute the updating widgets.
 
 	// system powered widgets
@@ -195,7 +199,7 @@ func main() {
 	// websocket powered widgets
 	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
 	go writeTransactions(ctx, transactionWidget, connectionSignal)
-	go blocksDonut(ctx, green, 0, 20, 1000*time.Millisecond, playTypePercent, connectionSignal)
+	go writeBlockDonut(ctx, green, 0, 20, 1000*time.Millisecond, playTypePercent, connectionSignal)
 
 	// Draw Dashboard
 	c, err := container.New(
@@ -514,42 +518,9 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 	}
 }
 
-// byteCountDecimal calculates bytes integer to a human readable decimal number
-func byteCountDecimal(b int64) string {
-	const unit = 1000
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
-}
-
-func view() {
-	api := new(ga.API)
-	api.ContentType = "application/x-www-form-urlencoded"
-
-	client := new(ga.Client)
-	client.ProtocolVersion = "1"
-	client.ClientID = uuid.New().String()
-	client.TrackingID = "UA-183957259-1"
-	client.HitType = "event"
-	client.DocumentLocationURL = "https://github.com/cosmos/gex"
-	client.DocumentTitle = "Dashboard"
-	client.DocumentEncoding = "UTF-8"
-	client.EventCategory = "Start"
-	client.EventAction = "Dashboard"
-	client.EventLabel = "start"
-
-	api.Send(client)
-}
-
-// blocksDonut continuously changes the displayed percent value on the donut by the
+// writeBlockDonut continuously changes the displayed percent value on the donut by the
 // step once every delay. Exits when the context expires.
-func blocksDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.Duration, pt playType, connectionSignal <-chan string) {
+func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.Duration, pt playType, connectionSignal <-chan string) {
 	port := *givenPort
 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
@@ -595,7 +566,7 @@ func blocksDonut(ctx context.Context, d *donut.Donut, start, step int, delay tim
 				socket.Close()
 			}
 			if s == "reconnect" {
-				blocksDonut(ctx, d, start, step, delay, pt, connectionSignal)
+				writeBlockDonut(ctx, d, start, step, delay, pt, connectionSignal)
 			}
 		case <-ctx.Done():
 			log.Println("interrupt")
@@ -605,9 +576,45 @@ func blocksDonut(ctx context.Context, d *donut.Donut, start, step int, delay tim
 	}
 }
 
+func view() {
+	api := new(ga.API)
+	api.ContentType = "application/x-www-form-urlencoded"
+
+	client := new(ga.Client)
+	client.ProtocolVersion = "1"
+	client.ClientID = uuid.New().String()
+	client.TrackingID = "UA-183957259-1"
+	client.HitType = "event"
+	client.DocumentLocationURL = "https://github.com/cosmos/gex"
+	client.DocumentTitle = "Dashboard"
+	client.DocumentEncoding = "UTF-8"
+	client.EventCategory = "Start"
+	client.EventAction = "Dashboard"
+	client.EventLabel = "start"
+
+	api.Send(client)
+}
+
+// UTIL FUNCTIONS
+
+// byteCountDecimal calculates bytes integer to a human readable decimal number
+func byteCountDecimal(b int64) string {
+	const unit = 1000
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+}
+
 func incrInfoBlocks(i Info) {
     i.blocks.amount++
 }
+
 func incrInfoSeconds(i Info) {
     i.blocks.secondsPassed++
 }
