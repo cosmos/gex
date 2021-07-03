@@ -28,7 +28,6 @@ import (
 	"gopkg.in/resty.v1"
 
 	"github.com/google/uuid"
-	// "github.com/jedib0t/go-pretty/table"
 	ga "github.com/ozgur-soft/google-analytics/src"
 	"github.com/sacOO7/gowebsocket"
 	"github.com/tidwall/gjson"
@@ -55,19 +54,16 @@ const (
 
 var givenPort = flag.String("p", "26657", "port to connect to as a string")
 
+// Info describes Info that we might want to use in the explorer
 type Info struct {
     blocks *Blocks
 }
+
+// Blocks describe content that we parse for a block
 type Blocks struct {
 	amount int
-	seconds_passed int
+	secondsPassed int
 } 
-func incrInfoBlocks(i Info) {
-    i.blocks.amount++
-}
-func incrInfoSeconds(i Info) {
-    i.blocks.seconds_passed++
-}
 
 func main() {
 	view()
@@ -141,6 +137,15 @@ func main() {
 		panic(err)
 	}
 
+	// Block Status Donut widget
+	green, err := donut.New(
+		donut.CellOpts(cell.FgColor(cell.ColorGreen)),
+		donut.Label("New block status", cell.FgColor(cell.ColorGreen)),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	// Transaction parsing widget
 	transactionWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
@@ -188,20 +193,9 @@ func main() {
 	go writeSecondsPerBlock(ctx, info, secondsPerBlockWidget, 1*time.Second)
 
 	// websocket powered widgets
-	// go writeValidators(ctx, validatorWidget, connectionSignal)
 	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
 	go writeTransactions(ctx, transactionWidget, connectionSignal)
-
-
-	// DONUT
-	green, err := donut.New(
-		donut.CellOpts(cell.FgColor(cell.ColorGreen)),
-		donut.Label("New block status", cell.FgColor(cell.ColorGreen)),
-	)
-	if err != nil {
-		panic(err)
-	}
-	go playDonut(ctx, green, 0, 20, 1000*time.Millisecond, playTypePercent, connectionSignal)
+	go blocksDonut(ctx, green, 0, 20, 1000*time.Millisecond, playTypePercent, connectionSignal)
 
 	// Draw Dashboard
 	c, err := container.New(
@@ -266,14 +260,8 @@ func main() {
 									container.Right(
 										container.SplitVertical(
 											container.Left(
-												// container.Border(linestyle.Light),
-												// container.BorderTitle("Max Block Size"),
-												// container.PlaceWidget(maxBlocksizeWidget),
 											),
 											container.Right(
-												// container.Border(linestyle.Light),
-												// container.BorderTitle("Connected IBC Channels"),
-												// container.PlaceWidget(peerWidget),
 											),
 										),
 									),
@@ -407,8 +395,8 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 		case <-ticker.C:
 			t.Reset()
 			blocksPerSecond := 0.00
-			if(info.blocks.seconds_passed != 0) {
-				blocksPerSecond = float64(info.blocks.seconds_passed) / float64(info.blocks.amount)
+			if(info.blocks.secondsPassed != 0) {
+				blocksPerSecond = float64(info.blocks.secondsPassed) / float64(info.blocks.amount)
 			}
 			
 			t.Write(fmt.Sprintf("%.2f seconds", blocksPerSecond))
@@ -526,51 +514,6 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 	}
 }
 
-// // writeValidators writes the current validator set to the validatoWidget
-// // Exits when the context expires.
-// func writeValidators(ctx context.Context, t *text.Text, connectionSignal <-chan string) {
-// 	port := *givenPort
-// 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
-
-// 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
-// 		validators := gjson.Get(getFromRPC("validators"), "result.validators")
-// 		t.Reset()
-
-// 		i := 1
-// 		validators.ForEach(func(key, validator gjson.Result) bool {
-
-// 			ta := table.NewWriter()
-// 			ta.AppendRow([]interface{}{fmt.Sprintf("%d", i), validator.Get("address").String(), validator.Get("voting_power").String()})
-
-// 			if err := t.Write(fmt.Sprintf("%s\n", ta.Render())); err != nil {
-// 				panic(err)
-// 			}
-// 			i++
-// 			return true // keep iterating
-// 		})
-// 	}
-
-// 	socket.Connect()
-
-// 	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='ValidatorSetUpdates'\"], \"id\": 3 }")
-
-// 	for {
-// 		select {
-// 		case s := <-connectionSignal:
-// 			if s == "no_connection" {
-// 				socket.Close()
-// 			}
-// 			if s == "reconnect" {
-// 				writeValidators(ctx, t, connectionSignal)
-// 			}
-// 		case <-ctx.Done():
-// 			log.Println("interrupt")
-// 			socket.Close()
-// 			return
-// 		}
-// 	}
-// }
-
 // byteCountDecimal calculates bytes integer to a human readable decimal number
 func byteCountDecimal(b int64) string {
 	const unit = 1000
@@ -604,9 +547,9 @@ func view() {
 	api.Send(client)
 }
 
-// playDonut continuously changes the displayed percent value on the donut by the
+// blocksDonut continuously changes the displayed percent value on the donut by the
 // step once every delay. Exits when the context expires.
-func playDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.Duration, pt playType, connectionSignal <-chan string) {
+func blocksDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.Duration, pt playType, connectionSignal <-chan string) {
 	port := *givenPort
 	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
@@ -652,7 +595,7 @@ func playDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.
 				socket.Close()
 			}
 			if s == "reconnect" {
-				playDonut(ctx, d, start, step, delay, pt, connectionSignal)
+				blocksDonut(ctx, d, start, step, delay, pt, connectionSignal)
 			}
 		case <-ctx.Done():
 			log.Println("interrupt")
@@ -660,4 +603,11 @@ func playDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.
 			return
 		}
 	}
+}
+
+func incrInfoBlocks(i Info) {
+    i.blocks.amount++
+}
+func incrInfoSeconds(i Info) {
+    i.blocks.secondsPassed++
 }
