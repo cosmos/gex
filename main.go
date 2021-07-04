@@ -340,7 +340,7 @@ func main() {
 					),
 					container.Right(
 						container.Border(linestyle.Light),
-						container.BorderTitle("Current Block round"),
+						container.BorderTitle("Current Block Round"),
 						container.PlaceWidget(green),
 					),
 				),
