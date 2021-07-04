@@ -183,6 +183,7 @@ func main() {
 		panic(err)
 	}
 
+	// Creates Gas per Average Block Widget
 	gasAvgBlockWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
 		panic(err)
@@ -191,6 +192,7 @@ func main() {
 		panic(err)
 	}
 
+	// Creates Gas per Average Transaction Widget
 	gasAvgTransactionWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
 		panic(err)
@@ -199,6 +201,7 @@ func main() {
 		panic(err)
 	}
 
+	// Creates Gas per Latest Transaction Widget
 	latestGasWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
 		panic(err)
@@ -409,15 +412,6 @@ func main() {
 	}
 }
 
-func getFromRPC(endpoint string) string {
-	port := *givenPort
-	resp, _ := resty.R().
-		SetHeader("Cache-Control", "no-cache").
-		SetHeader("Content-Type", "application/json").
-		Get(appRPC + ":" + port + "/" + endpoint)
-
-	return resp.String()
-}
 
 // writeTime writes the current system time to the timeWidget.
 // Exits when the context expires.
@@ -439,6 +433,7 @@ func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration
 		}
 	}
 }
+
 
 // writeHealth writes the status to the healthWidget.
 // Exits when the context expires.
@@ -478,6 +473,38 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 					reconnect = true
 				}
 			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// writePeers writes the connected Peers to the peerWidget.
+// Exits when the context expires.
+func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
+	peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+	t.Reset()
+	if peers != "" {
+		t.Write(peers)
+	}
+	if err := t.Write(peers); err != nil {
+		panic(err)
+	}
+
+	ticker := time.NewTicker(delay)
+	t.Reset()
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			t.Reset()
+			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+			if peers != "" {
+				t.Reset()
+				t.Write(peers)
+			}
+
 		case <-ctx.Done():
 			return
 		}
@@ -600,78 +627,9 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 	}
 }
 
-// writePeers writes the connected Peers to the peerWidget.
-// Exits when the context expires.
-func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
-	peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
-	t.Reset()
-	if peers != "" {
-		t.Write(peers)
-	}
-	if err := t.Write(peers); err != nil {
-		panic(err)
-	}
 
-	ticker := time.NewTicker(delay)
-	t.Reset()
-	defer ticker.Stop()
+// WEBSOCKET WIDGETS
 
-	for {
-		select {
-		case <-ticker.C:
-			t.Reset()
-			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
-			if peers != "" {
-				t.Reset()
-				t.Write(peers)
-			}
-
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// writeTransactions writes the latest Transactions to the transactionsWidget.
-// Exits when the context expires.
-func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
-	port := *givenPort
-	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
-
-	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
-		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
-		currentTime := time.Now()
-		if currentTx.String() != "" {
-			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02 03:04:05 PM")+"\n"+currentTx.String())); err != nil {
-				panic(err)
-			}
-
-			info.blocks.totalGasWanted = info.blocks.totalGasWanted + gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
-			info.blocks.lastTx = gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
-			info.transactions.amount++
-		}
-	}
-
-	socket.Connect()
-
-	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='Tx'\"], \"id\": 2 }")
-
-	for {
-		select {
-		case s := <-connectionSignal:
-			if s == "no_connection" {
-				socket.Close()
-			}
-			if s == "reconnect" {
-				writeTransactions(ctx, info, t, connectionSignal)
-			}
-		case <-ctx.Done():
-			log.Println("interrupt")
-			socket.Close()
-			return
-		}
-	}
-}
 
 // writeBlocks writes the latest Block to the blocksWidget.
 // Exits when the context expires.
@@ -773,26 +731,59 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 	}
 }
 
-func view() {
-	api := new(ga.API)
-	api.ContentType = "application/x-www-form-urlencoded"
+// writeTransactions writes the latest Transactions to the transactionsWidget.
+// Exits when the context expires.
+func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
+	port := *givenPort
+	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
 
-	client := new(ga.Client)
-	client.ProtocolVersion = "1"
-	client.ClientID = uuid.New().String()
-	client.TrackingID = "UA-183957259-1"
-	client.HitType = "event"
-	client.DocumentLocationURL = "https://github.com/cosmos/gex"
-	client.DocumentTitle = "Dashboard"
-	client.DocumentEncoding = "UTF-8"
-	client.EventCategory = "Start"
-	client.EventAction = "Dashboard"
-	client.EventLabel = "start"
+	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
+		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
+		currentTime := time.Now()
+		if currentTx.String() != "" {
+			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02 03:04:05 PM")+"\n"+currentTx.String())); err != nil {
+				panic(err)
+			}
 
-	api.Send(client)
+			info.blocks.totalGasWanted = info.blocks.totalGasWanted + gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
+			info.blocks.lastTx = gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
+			info.transactions.amount++
+		}
+	}
+
+	socket.Connect()
+
+	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='Tx'\"], \"id\": 2 }")
+
+	for {
+		select {
+		case s := <-connectionSignal:
+			if s == "no_connection" {
+				socket.Close()
+			}
+			if s == "reconnect" {
+				writeTransactions(ctx, info, t, connectionSignal)
+			}
+		case <-ctx.Done():
+			log.Println("interrupt")
+			socket.Close()
+			return
+		}
+	}
 }
 
 // UTIL FUNCTIONS
+
+// Get Data from RPC Endpoint
+func getFromRPC(endpoint string) string {
+	port := *givenPort
+	resp, _ := resty.R().
+		SetHeader("Cache-Control", "no-cache").
+		SetHeader("Content-Type", "application/json").
+		Get(appRPC + ":" + port + "/" + endpoint)
+
+	return resp.String()
+}
 
 // byteCountDecimal calculates bytes integer to a human readable decimal number
 func byteCountDecimal(b int64) string {
@@ -831,4 +822,23 @@ func numberWithComma(n int64) string {
             out[j] = ','
         }
     }
+}
+
+func view() {
+	api := new(ga.API)
+	api.ContentType = "application/x-www-form-urlencoded"
+
+	client := new(ga.Client)
+	client.ProtocolVersion = "1"
+	client.ClientID = uuid.New().String()
+	client.TrackingID = "UA-183957259-1"
+	client.HitType = "event"
+	client.DocumentLocationURL = "https://github.com/cosmos/gex"
+	client.DocumentTitle = "Dashboard"
+	client.DocumentEncoding = "UTF-8"
+	client.EventCategory = "Start"
+	client.EventAction = "Dashboard"
+	client.EventLabel = "start"
+
+	api.Send(client)
 }
