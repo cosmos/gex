@@ -358,7 +358,7 @@ func main() {
 											),
 											container.Right(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Gas Ø per Block"),
+												container.BorderTitle("Ø Block"),
 												container.PlaceWidget(gasAvgBlockWidget),
 											),
 										),
@@ -368,12 +368,12 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Gas Ø per Tx"),
+												container.BorderTitle("Ø Tx"),
 												container.PlaceWidget(gasAvgTransactionWidget),
 											),
 											container.Right(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Gas Latest Tx"),
+												container.BorderTitle("Latest Tx"),
 												container.PlaceWidget(latestGasWidget),
 											),
 										),
