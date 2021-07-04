@@ -568,7 +568,7 @@ func writeGasWidget(ctx context.Context, info Info, tMax *text.Text, tAvgBlock *
 
 			maxGas := genesisInfo.Get("result.genesis.consensus_params.block.max_gas").Int()
 
-			tMax.Write(fmt.Sprintf("%v", numberWithComma(maxGas)))
+			tMax.Write(fmt.Sprintf("%v", numberWithComma(info.blocks.maxGasWanted)))
 			tAvgBlock.Write(fmt.Sprintf("%v", numberWithComma(int64(totalGasPerBlock))))
 			tLatest.Write(fmt.Sprintf("%v", numberWithComma(info.blocks.lastTx)))
 			tAvgTx.Write(fmt.Sprintf("%v", numberWithComma(int64(averageGasPerTx))))
