@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"time"
+	"strconv"
 
 	"log"
 
@@ -57,13 +58,23 @@ var givenPort = flag.String("p", "26657", "port to connect to as a string")
 // Info describes a list of types with data that are used in the explorer
 type Info struct {
 	blocks *Blocks
+	transactions *Transactions
 }
 
-// Blocks describe content that gets parsed for a block
+// Blocks describe content that gets parsed for blocks
 type Blocks struct {
 	amount int
 	secondsPassed int
+	totalGasWanted int64
+	gasWantedLatestBlock int64
+	maxGasWanted int64
+	lastTx int64
 } 
+
+// Transactions describe content that gets parsed for transactions
+type Transactions struct {
+	amount uint64
+}
 
 // playType indicates the type of the donut widget.
 type playType int
@@ -74,6 +85,7 @@ func main() {
 	// Init internal variables
 	info := Info{}
 	info.blocks = new(Blocks)
+	info.transactions = new(Transactions)
 
 	connectionSignal := make(chan string)
 	t, err := termbox.New()
@@ -90,12 +102,23 @@ func main() {
 		panic("Application not running on localhost:" + fmt.Sprintf("%s", *givenPort))
 	}
 
+	genesisInfo := gjson.Parse(getFromRPC("genesis"))
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 
 	// START INITIALISING WIDGETS
 
-	// Creates the initial text for the health widget
+	// Creates Network Widget
+	currentNetworkWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := currentNetworkWidget.Write(networkStatus.Get("result.node_info.network").String()); err != nil {
+		panic(err)
+	}
+
+	// Creates Health Widget
 	healthWidget, err := text.New()
 	if err != nil {
 		panic(err)
@@ -104,7 +127,7 @@ func main() {
 		panic(err)
 	}
 
-	// Creates the initial text for the system time widget
+	// Creates System Time Widget
 	timeWidget, err := text.New()
 	if err != nil {
 		panic(err)
@@ -114,7 +137,25 @@ func main() {
 		panic(err)
 	}
 
-	// Creates the initial text for the block size widget
+	// Creates Connected Peers Widget
+	peerWidget, err := text.New()
+	if err != nil {
+		panic(err)
+	}
+	if err := peerWidget.Write("0"); err != nil {
+		panic(err)
+	}
+
+	// Creates Seconds Between Blocks Widget
+	secondsPerBlockWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := secondsPerBlockWidget.Write("0"); err != nil {
+		panic(err)
+	}
+
+	// Creates Max Block Size Widget
 	maxBlocksizeWidget, err := text.New()
 	maxBlockSize := gjson.Get(getFromRPC("consensus_params"), "result.consensus_params.block.max_bytes").Int()
 	if err != nil {
@@ -124,16 +165,7 @@ func main() {
 		panic(err)
 	}
 
-	// Creates the initial text for the peer widget
-	peerWidget, err := text.New()
-	if err != nil {
-		panic(err)
-	}
-	if err := peerWidget.Write("0"); err != nil {
-		panic(err)
-	}
-
-	// validator widget
+	// Creates Validators widget
 	validatorWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
 		panic(err)
@@ -141,6 +173,44 @@ func main() {
 	if err := validatorWidget.Write("List available validators.\n\n"); err != nil {
 		panic(err)
 	}
+
+	// Creates Validators widget
+	gasMaxWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := gasMaxWidget.Write("How much gas.\n\n"); err != nil {
+		panic(err)
+	}
+
+	// Creates Gas per Average Block Widget
+	gasAvgBlockWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := gasAvgBlockWidget.Write("How much gas.\n\n"); err != nil {
+		panic(err)
+	}
+
+	// Creates Gas per Average Transaction Widget
+	gasAvgTransactionWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := gasAvgTransactionWidget.Write("How much gas.\n\n"); err != nil {
+		panic(err)
+	}
+
+	// Creates Gas per Latest Transaction Widget
+	latestGasWidget, err := text.New(text.RollContent(), text.WrapAtWords())
+	if err != nil {
+		panic(err)
+	}
+	if err := latestGasWidget.Write("How much gas.\n\n"); err != nil {
+		panic(err)
+	}
+
+	// BIG WIDGETS
 
 	// Block Status Donut widget
 	green, err := donut.New(
@@ -165,27 +235,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if err := blocksWidget.Write("Latest block height " + networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
+	if err := blocksWidget.Write(networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
 		panic(err)
 	}
 
-	// create seconds per block widget
-	secondsPerBlockWidget, err := text.New(text.RollContent(), text.WrapAtWords())
-	if err != nil {
-		panic(err)
-	}
-	if err := secondsPerBlockWidget.Write("0"); err != nil {
-		panic(err)
-	}
-
-	// create current network widget
-	currentNetworkWidget, err := text.New(text.RollContent(), text.WrapAtWords())
-	if err != nil {
-		panic(err)
-	}
-	if err := currentNetworkWidget.Write(networkStatus.Get("result.node_info.network").String()); err != nil {
-		panic(err)
-	}
 
 	// END INITIALISING WIDGETS
 
@@ -199,10 +252,11 @@ func main() {
 	go writeHealth(ctx, healthWidget, 500*time.Millisecond, connectionSignal)
 	go writeSecondsPerBlock(ctx, info, secondsPerBlockWidget, 1*time.Second)
 	go writeAmountValidators(ctx, validatorWidget, 1000*time.Millisecond, connectionSignal)
+	go writeGasWidget(ctx, info, gasMaxWidget, gasAvgBlockWidget, gasAvgTransactionWidget, latestGasWidget, 1000*time.Millisecond, connectionSignal, genesisInfo)
 
 	// websocket powered widgets
 	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
-	go writeTransactions(ctx, transactionWidget, connectionSignal)
+	go writeTransactions(ctx, info, transactionWidget, connectionSignal)
 	go writeBlockDonut(ctx, green, 0, 20, 1000*time.Millisecond, playTypePercent, connectionSignal)
 
 	// Draw Dashboard
@@ -255,8 +309,9 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("s Between Blocks"),
-												container.PlaceWidget(secondsPerBlockWidget),
+												container.BorderTitle("Latest Block"),
+												container.PlaceWidget(blocksWidget),
+												
 											),
 											container.Right(
 												container.Border(linestyle.Light),
@@ -269,10 +324,13 @@ func main() {
 										container.SplitVertical(
 											container.Left(
 												container.Border(linestyle.Light),
-												container.BorderTitle("Validators"),
-												container.PlaceWidget(validatorWidget),
+												container.BorderTitle("s Between Blocks"),
+												container.PlaceWidget(secondsPerBlockWidget),
 											),
 											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Validators"),
+												container.PlaceWidget(validatorWidget),
 											),
 										),
 									),
@@ -289,10 +347,47 @@ func main() {
 			),
 			container.Bottom(
 				container.SplitVertical(
+					
 					container.Left(
-						container.Border(linestyle.Light),
-						container.BorderTitle("Latest Blocks"),
-						container.PlaceWidget(blocksWidget),
+						container.SplitHorizontal(
+							container.Top(
+								container.SplitVertical(
+									container.Left(
+										container.SplitVertical(
+											container.Left(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Max"),
+												container.PlaceWidget(gasMaxWidget),
+											),
+											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Ø Block"),
+												container.PlaceWidget(gasAvgBlockWidget),
+											),
+										),
+										
+									),
+									container.Right(
+										container.SplitVertical(
+											container.Left(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Ø Tx"),
+												container.PlaceWidget(gasAvgTransactionWidget),
+											),
+											container.Right(
+												container.Border(linestyle.Light),
+												container.BorderTitle("Gas Latest Tx"),
+												container.PlaceWidget(latestGasWidget),
+											),
+										),
+										
+									),
+								),
+							),
+							container.Bottom(
+								//empty
+							),
+						),
 					), container.Right(
 						container.Border(linestyle.Light),
 						container.BorderTitle("Latest Confirmed Transactions"),
@@ -317,15 +412,6 @@ func main() {
 	}
 }
 
-func getFromRPC(endpoint string) string {
-	port := *givenPort
-	resp, _ := resty.R().
-		SetHeader("Cache-Control", "no-cache").
-		SetHeader("Content-Type", "application/json").
-		Get(appRPC + ":" + port + "/" + endpoint)
-
-	return resp.String()
-}
 
 // writeTime writes the current system time to the timeWidget.
 // Exits when the context expires.
@@ -341,12 +427,13 @@ func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration
 			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02\n03:04:05 PM"))); err != nil {
 				panic(err)
 			}
-			incrInfoSeconds(info)
+			info.blocks.secondsPassed++
 		case <-ctx.Done():
 			return
 		}
 	}
 }
+
 
 // writeHealth writes the status to the healthWidget.
 // Exits when the context expires.
@@ -386,6 +473,38 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 					reconnect = true
 				}
 			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// writePeers writes the connected Peers to the peerWidget.
+// Exits when the context expires.
+func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
+	peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+	t.Reset()
+	if peers != "" {
+		t.Write(peers)
+	}
+	if err := t.Write(peers); err != nil {
+		panic(err)
+	}
+
+	ticker := time.NewTicker(delay)
+	t.Reset()
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			t.Reset()
+			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+			if peers != "" {
+				t.Reset()
+				t.Write(peers)
+			}
+
 		case <-ctx.Done():
 			return
 		}
@@ -436,6 +555,53 @@ func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duratio
 	}
 }
 
+// writeGasWidget writes the status to the healthWidget.
+// Exits when the context expires.
+func writeGasWidget(ctx context.Context, info Info, tMax *text.Text, tAvgBlock *text.Text, tAvgTx *text.Text, tLatest *text.Text, delay time.Duration, connectionSignal chan string, genesisInfo gjson.Result) {
+	tMax.Write("0")
+	tAvgBlock.Write("0")
+	tLatest.Write("0")
+	tAvgTx.Write("0")
+
+	ticker := time.NewTicker(delay)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			tMax.Reset()
+			tAvgBlock.Reset()
+			tAvgTx.Reset()
+			tLatest.Reset()
+
+			totalGasWanted := uint64(info.blocks.totalGasWanted)
+			totalBlocks := uint64(info.blocks.amount)
+			totalGasPerBlock := uint64(0)
+
+			// don't divide by 0
+			if(totalBlocks > 0) {
+				totalGasPerBlock = uint64( totalGasWanted / totalBlocks )
+			}
+
+
+			totalTransactions := uint64(info.transactions.amount)
+
+			// don't divide by 0
+			averageGasPerTx := uint64(0)
+			if(totalTransactions > 0) {
+				averageGasPerTx = uint64( totalGasWanted / info.transactions.amount)
+			}
+
+			tMax.Write(fmt.Sprintf("%v", numberWithComma(info.blocks.maxGasWanted)))
+			tAvgBlock.Write(fmt.Sprintf("%v", numberWithComma(int64(totalGasPerBlock))))
+			tLatest.Write(fmt.Sprintf("%v", numberWithComma(info.blocks.lastTx)))
+			tAvgTx.Write(fmt.Sprintf("%v", numberWithComma(int64(averageGasPerTx))))
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 // writeSecondsPerBlock writes the status to the Time per block.
 // Exits when the context expires.
 func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay time.Duration) {
@@ -461,74 +627,9 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 	}
 }
 
-// writePeers writes the connected Peers to the peerWidget.
-// Exits when the context expires.
-func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
-	peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
-	t.Reset()
-	if peers != "" {
-		t.Write(peers)
-	}
-	if err := t.Write(peers); err != nil {
-		panic(err)
-	}
 
-	ticker := time.NewTicker(delay)
-	t.Reset()
-	defer ticker.Stop()
+// WEBSOCKET WIDGETS
 
-	for {
-		select {
-		case <-ticker.C:
-			t.Reset()
-			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
-			if peers != "" {
-				t.Reset()
-				t.Write(peers)
-			}
-
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// writeTransactions writes the latest Transactions to the transactionsWidget.
-// Exits when the context expires.
-func writeTransactions(ctx context.Context, t *text.Text, connectionSignal <-chan string) {
-	port := *givenPort
-	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
-
-	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
-		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
-		currentTime := time.Now()
-		if currentTx.String() != "" {
-			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02 03:04:05 PM")+"\n"+currentTx.String())); err != nil {
-				panic(err)
-			}
-		}
-	}
-
-	socket.Connect()
-
-	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='Tx'\"], \"id\": 2 }")
-
-	for {
-		select {
-		case s := <-connectionSignal:
-			if s == "no_connection" {
-				socket.Close()
-			}
-			if s == "reconnect" {
-				writeTransactions(ctx, t, connectionSignal)
-			}
-		case <-ctx.Done():
-			log.Println("interrupt")
-			socket.Close()
-			return
-		}
-	}
-}
 
 // writeBlocks writes the latest Block to the blocksWidget.
 // Exits when the context expires.
@@ -540,10 +641,13 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
 		if currentBlock.String() != "" {
-			if err := t.Write(fmt.Sprintf("%s\n", "Latest block height "+currentBlock.String())); err != nil {
+			t.Reset()
+			err := t.Write(fmt.Sprintf("%v", numberWithComma(int64(currentBlock.Int())))); 
+			if err != nil {
 				panic(err)
 			}
-			incrInfoBlocks(info)
+			info.blocks.amount++
+			info.blocks.maxGasWanted = gjson.Get(message, "result.data.value.result_end_block.consensus_param_updates.block.max_gas").Int()
 		}
 
 	}
@@ -627,6 +731,99 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 	}
 }
 
+// writeTransactions writes the latest Transactions to the transactionsWidget.
+// Exits when the context expires.
+func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
+	port := *givenPort
+	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
+
+	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
+		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
+		currentTime := time.Now()
+		if currentTx.String() != "" {
+			if err := t.Write(fmt.Sprintf("%s\n", currentTime.Format("2006-01-02 03:04:05 PM")+"\n"+currentTx.String())); err != nil {
+				panic(err)
+			}
+
+			info.blocks.totalGasWanted = info.blocks.totalGasWanted + gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
+			info.blocks.lastTx = gjson.Get(message, "result.data.value.TxResult.result.gas_wanted").Int()
+			info.transactions.amount++
+		}
+	}
+
+	socket.Connect()
+
+	socket.SendText("{ \"jsonrpc\": \"2.0\", \"method\": \"subscribe\", \"params\": [\"tm.event='Tx'\"], \"id\": 2 }")
+
+	for {
+		select {
+		case s := <-connectionSignal:
+			if s == "no_connection" {
+				socket.Close()
+			}
+			if s == "reconnect" {
+				writeTransactions(ctx, info, t, connectionSignal)
+			}
+		case <-ctx.Done():
+			log.Println("interrupt")
+			socket.Close()
+			return
+		}
+	}
+}
+
+// UTIL FUNCTIONS
+
+// Get Data from RPC Endpoint
+func getFromRPC(endpoint string) string {
+	port := *givenPort
+	resp, _ := resty.R().
+		SetHeader("Cache-Control", "no-cache").
+		SetHeader("Content-Type", "application/json").
+		Get(appRPC + ":" + port + "/" + endpoint)
+
+	return resp.String()
+}
+
+// byteCountDecimal calculates bytes integer to a human readable decimal number
+func byteCountDecimal(b int64) string {
+	const unit = 1000
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+}
+
+func numberWithComma(n int64) string {
+    in := strconv.FormatInt(n, 10)
+    numOfDigits := len(in)
+    if n < 0 {
+        numOfDigits-- // First character is the - sign (not a digit)
+    }
+    numOfCommas := (numOfDigits - 1) / 3
+
+    out := make([]byte, len(in)+numOfCommas)
+    if n < 0 {
+        in, out[0] = in[1:], '-'
+    }
+
+    for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
+        out[j] = in[i]
+        if i == 0 {
+            return string(out)
+        }
+        if k++; k == 3 {
+            j, k = j-1, 0
+            out[j] = ','
+        }
+    }
+}
+
 func view() {
 	api := new(ga.API)
 	api.ContentType = "application/x-www-form-urlencoded"
@@ -644,28 +841,4 @@ func view() {
 	client.EventLabel = "start"
 
 	api.Send(client)
-}
-
-// UTIL FUNCTIONS
-
-// byteCountDecimal calculates bytes integer to a human readable decimal number
-func byteCountDecimal(b int64) string {
-	const unit = 1000
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
-}
-
-func incrInfoBlocks(i Info) {
-    i.blocks.amount++
-}
-
-func incrInfoSeconds(i Info) {
-    i.blocks.secondsPassed++
 }
