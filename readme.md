@@ -26,7 +26,7 @@ Configure an optional port, instead of using the default RPC port `26657`
 
 `gex -p 27657`
 
-## Sneak Peak
+## Preview
 
 ![Terminal Screenshot](./screenshot.png "Screenshot Application")
 
