@@ -251,13 +251,13 @@ func main() {
 	go writePeers(ctx, peerWidget, 1*time.Second)
 	go writeHealth(ctx, healthWidget, 500*time.Millisecond, connectionSignal)
 	go writeSecondsPerBlock(ctx, info, secondsPerBlockWidget, 1*time.Second)
-	go writeAmountValidators(ctx, validatorWidget, 1000*time.Millisecond, connectionSignal)
+	go writeAmountValidators(ctx, validatorWidget, 3000*time.Millisecond, connectionSignal)
 	go writeGasWidget(ctx, info, gasMaxWidget, gasAvgBlockWidget, gasAvgTransactionWidget, latestGasWidget, 1000*time.Millisecond, connectionSignal, genesisInfo)
 
 	// websocket powered widgets
 	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
 	go writeTransactions(ctx, info, transactionWidget, connectionSignal)
-	go writeBlockDonut(ctx, green, 0, 20, 1000*time.Millisecond, playTypePercent, connectionSignal)
+	go writeBlockDonut(ctx, green, 0, 20, 700*time.Millisecond, playTypePercent, connectionSignal)
 
 	// Draw Dashboard
 	c, err := container.New(
