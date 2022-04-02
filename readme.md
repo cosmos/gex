@@ -10,7 +10,7 @@ The GEX installation requires Go. If you don't already have Go installed, see ht
 
 To install the GEX binary:
 
-`go install github.com/cosmos/gex @latest`
+`go install github.com/cosmos/gex@latest`
 
 ## Run GEX
 
