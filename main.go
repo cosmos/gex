@@ -21,8 +21,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"time"
 	"strconv"
+	"time"
 
 	"log"
 
@@ -40,13 +40,11 @@ import (
 	"github.com/mum4k/termdash/linestyle"
 	"github.com/mum4k/termdash/terminal/termbox"
 	"github.com/mum4k/termdash/terminal/terminalapi"
-	"github.com/mum4k/termdash/widgets/text"
 	"github.com/mum4k/termdash/widgets/donut"
+	"github.com/mum4k/termdash/widgets/text"
 )
 
 const (
-	// RPC requests are made to the native app running
-	appRPC        = "http://localhost"
 	// donut widget constants
 	playTypePercent playType = iota
 	playTypeAbsolute
@@ -54,22 +52,23 @@ const (
 
 // optional port variable. example: `gex -p 30057`
 var givenPort = flag.String("p", "26657", "port to connect to as a string")
+var givenHost = flag.String("h", "localhost", "host to connect")
 
 // Info describes a list of types with data that are used in the explorer
 type Info struct {
-	blocks *Blocks
+	blocks       *Blocks
 	transactions *Transactions
 }
 
 // Blocks describe content that gets parsed for blocks
 type Blocks struct {
-	amount int
-	secondsPassed int
-	totalGasWanted int64
+	amount               int
+	secondsPassed        int
+	totalGasWanted       int64
 	gasWantedLatestBlock int64
-	maxGasWanted int64
-	lastTx int64
-} 
+	maxGasWanted         int64
+	lastTx               int64
+}
 
 // Transactions describe content that gets parsed for transactions
 type Transactions struct {
@@ -99,13 +98,12 @@ func main() {
 	networkInfo := getFromRPC("status")
 	networkStatus := gjson.Parse(networkInfo)
 	if !networkStatus.Exists() {
-		panic("Application not running on localhost:" + fmt.Sprintf("%s", *givenPort))
+		panic("Application not running on " + fmt.Sprintf("%s:%s", *givenHost, *givenPort))
 	}
 
 	genesisInfo := gjson.Parse(getFromRPC("genesis"))
 
 	ctx, cancel := context.WithCancel(context.Background())
-
 
 	// START INITIALISING WIDGETS
 
@@ -229,7 +227,7 @@ func main() {
 	if err := transactionWidget.Write("Transactions will appear as soon as they are confirmed in a block.\n\n"); err != nil {
 		panic(err)
 	}
-	
+
 	// Create Blocks parsing widget
 	blocksWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
@@ -238,7 +236,6 @@ func main() {
 	if err := blocksWidget.Write(networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
 		panic(err)
 	}
-
 
 	// END INITIALISING WIDGETS
 
@@ -311,7 +308,6 @@ func main() {
 												container.Border(linestyle.Light),
 												container.BorderTitle("Latest Block"),
 												container.PlaceWidget(blocksWidget),
-												
 											),
 											container.Right(
 												container.Border(linestyle.Light),
@@ -347,7 +343,7 @@ func main() {
 			),
 			container.Bottom(
 				container.SplitVertical(
-					
+
 					container.Left(
 						container.SplitHorizontal(
 							container.Top(
@@ -365,7 +361,6 @@ func main() {
 												container.PlaceWidget(gasAvgBlockWidget),
 											),
 										),
-										
 									),
 									container.Right(
 										container.SplitVertical(
@@ -380,12 +375,11 @@ func main() {
 												container.PlaceWidget(latestGasWidget),
 											),
 										),
-										
 									),
 								),
 							),
 							container.Bottom(
-								//empty
+							//empty
 							),
 						),
 					), container.Right(
@@ -412,7 +406,6 @@ func main() {
 	}
 }
 
-
 // writeTime writes the current system time to the timeWidget.
 // Exits when the context expires.
 func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration) {
@@ -433,7 +426,6 @@ func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration
 		}
 	}
 }
-
 
 // writeHealth writes the status to the healthWidget.
 // Exits when the context expires.
@@ -579,17 +571,16 @@ func writeGasWidget(ctx context.Context, info Info, tMax *text.Text, tAvgBlock *
 			totalGasPerBlock := uint64(0)
 
 			// don't divide by 0
-			if(totalBlocks > 0) {
-				totalGasPerBlock = uint64( totalGasWanted / totalBlocks )
+			if totalBlocks > 0 {
+				totalGasPerBlock = uint64(totalGasWanted / totalBlocks)
 			}
-
 
 			totalTransactions := uint64(info.transactions.amount)
 
 			// don't divide by 0
 			averageGasPerTx := uint64(0)
-			if(totalTransactions > 0) {
-				averageGasPerTx = uint64( totalGasWanted / info.transactions.amount)
+			if totalTransactions > 0 {
+				averageGasPerTx = uint64(totalGasWanted / info.transactions.amount)
 			}
 
 			tMax.Write(fmt.Sprintf("%v", numberWithComma(info.blocks.maxGasWanted)))
@@ -616,10 +607,10 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 		case <-ticker.C:
 			t.Reset()
 			blocksPerSecond := 0.00
-			if(info.blocks.secondsPassed != 0) {
+			if info.blocks.secondsPassed != 0 {
 				blocksPerSecond = float64(info.blocks.secondsPassed) / float64(info.blocks.amount)
 			}
-			
+
 			t.Write(fmt.Sprintf("%.2f seconds", blocksPerSecond))
 		case <-ctx.Done():
 			return
@@ -627,22 +618,21 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 	}
 }
 
-
 // WEBSOCKET WIDGETS
-
 
 // writeBlocks writes the latest Block to the blocksWidget.
 // Exits when the context expires.
 func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
 
 	port := *givenPort
-	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
+	host := *givenHost
+	socket := gowebsocket.New("ws://" + host + ":" + port + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
 		if currentBlock.String() != "" {
 			t.Reset()
-			err := t.Write(fmt.Sprintf("%v", numberWithComma(int64(currentBlock.Int())))); 
+			err := t.Write(fmt.Sprintf("%v", numberWithComma(int64(currentBlock.Int()))))
 			if err != nil {
 				panic(err)
 			}
@@ -677,7 +667,8 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 // step once every delay. Exits when the context expires.
 func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.Duration, pt playType, connectionSignal <-chan string) {
 	port := *givenPort
-	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
+	host := *givenHost
+	socket := gowebsocket.New("ws://" + host + ":" + port + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		step := gjson.Get(message, "result.data.value.step")
@@ -702,7 +693,6 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 		if step.String() == "RoundStepPropose" {
 			progress = 20
 		}
-
 
 		if err := d.Percent(progress); err != nil {
 			panic(err)
@@ -735,7 +725,8 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 // Exits when the context expires.
 func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
 	port := *givenPort
-	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
+	host := *givenHost
+	socket := gowebsocket.New("ws://" + host + ":" + port + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
@@ -777,10 +768,11 @@ func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionS
 // Get Data from RPC Endpoint
 func getFromRPC(endpoint string) string {
 	port := *givenPort
+	host := *givenHost
 	resp, _ := resty.R().
 		SetHeader("Cache-Control", "no-cache").
 		SetHeader("Content-Type", "application/json").
-		Get(appRPC + ":" + port + "/" + endpoint)
+		Get("http://" + host + ":" + port + "/" + endpoint)
 
 	return resp.String()
 }
@@ -800,28 +792,28 @@ func byteCountDecimal(b int64) string {
 }
 
 func numberWithComma(n int64) string {
-    in := strconv.FormatInt(n, 10)
-    numOfDigits := len(in)
-    if n < 0 {
-        numOfDigits-- // First character is the - sign (not a digit)
-    }
-    numOfCommas := (numOfDigits - 1) / 3
+	in := strconv.FormatInt(n, 10)
+	numOfDigits := len(in)
+	if n < 0 {
+		numOfDigits-- // First character is the - sign (not a digit)
+	}
+	numOfCommas := (numOfDigits - 1) / 3
 
-    out := make([]byte, len(in)+numOfCommas)
-    if n < 0 {
-        in, out[0] = in[1:], '-'
-    }
+	out := make([]byte, len(in)+numOfCommas)
+	if n < 0 {
+		in, out[0] = in[1:], '-'
+	}
 
-    for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
-        out[j] = in[i]
-        if i == 0 {
-            return string(out)
-        }
-        if k++; k == 3 {
-            j, k = j-1, 0
-            out[j] = ','
-        }
-    }
+	for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
+		out[j] = in[i]
+		if i == 0 {
+			return string(out)
+		}
+		if k++; k == 3 {
+			j, k = j-1, 0
+			out[j] = ','
+		}
+	}
 }
 
 func view() {
