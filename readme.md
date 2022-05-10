@@ -16,15 +16,27 @@ To install the GEX binary:
 
 To launch a GEX explorer in your terminal window, type:
 
-`gex`
+```sh
+gex
+```
 
 and hit enter.
+
+## Optional Host
+
+Configure an optional host, instead of using the default RPC host `localhost`
+
+```sh
+gex -h 192.168.0.1
+```
 
 ## Optional Port
 
 Configure an optional port, instead of using the default RPC port `26657`
 
-`gex -p 27657`
+```sh
+gex -p 27657
+```
 
 ## Preview
 
