@@ -21,10 +21,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
+	"os"
 	"strconv"
 	"time"
-
-	"log"
 
 	"gopkg.in/resty.v1"
 
@@ -51,8 +51,9 @@ const (
 )
 
 // optional port variable. example: `gex -p 30057`
-var givenPort = flag.String("p", "26657", "port to connect to as a string")
+var givenPort = flag.Int("p", 26657, "port to connect")
 var givenHost = flag.String("h", "localhost", "host to connect")
+var ssl = flag.Bool("s", false, "use SSL for connection")
 
 // Info describes a list of types with data that are used in the explorer
 type Info struct {
@@ -60,7 +61,7 @@ type Info struct {
 	transactions *Transactions
 }
 
-// Blocks describe content that gets parsed for blocks
+// Blocks describe content that gets parsed for block
 type Blocks struct {
 	amount               int
 	secondsPassed        int
@@ -95,13 +96,18 @@ func main() {
 
 	flag.Parse()
 
-	networkInfo := getFromRPC("status")
-	networkStatus := gjson.Parse(networkInfo)
-	if !networkStatus.Exists() {
-		panic("Application not running on " + fmt.Sprintf("%s:%s", *givenHost, *givenPort))
+	networkInfo, err := getFromRPC("status")
+	if err != nil {
+		fmt.Println("Application not running on " + fmt.Sprintf("%s:%d", *givenHost, *givenPort))
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
-	genesisInfo := gjson.Parse(getFromRPC("genesis"))
+	networkStatus := gjson.Parse(networkInfo)
+
+	genesisRPC, _ := getFromRPC("genesis")
+
+	genesisInfo := gjson.Parse(genesisRPC)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -155,7 +161,10 @@ func main() {
 
 	// Creates Max Block Size Widget
 	maxBlocksizeWidget, err := text.New()
-	maxBlockSize := gjson.Get(getFromRPC("consensus_params"), "result.consensus_params.block.max_bytes").Int()
+
+	consensusParamsRPC, _ := getFromRPC("consensus_params")
+
+	maxBlockSize := gjson.Get(consensusParamsRPC, "result.consensus_params.block.max_bytes").Int()
 	if err != nil {
 		panic(err)
 	}
@@ -431,7 +440,8 @@ func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration
 // Exits when the context expires.
 func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connectionSignal chan string) {
 	reconnect := false
-	health := gjson.Get(getFromRPC("health"), "result")
+	healthRPC, _ := getFromRPC("health")
+	health := gjson.Get(healthRPC, "result")
 	t.Reset()
 	if health.Exists() {
 		t.Write("✔️ good")
@@ -445,7 +455,8 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 	for {
 		select {
 		case <-ticker.C:
-			health := gjson.Get(getFromRPC("health"), "result")
+			healthRPC, _ := getFromRPC("health")
+			health := gjson.Get(healthRPC, "result")
 			if health.Exists() {
 				t.Reset()
 				t.Write("✔️ good")
@@ -474,7 +485,9 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 // writePeers writes the connected Peers to the peerWidget.
 // Exits when the context expires.
 func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
-	peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+	netInfoRPC, _ := getFromRPC("net_info")
+
+	peers := gjson.Get(netInfoRPC, "result.n_peers").String()
 	t.Reset()
 	if peers != "" {
 		t.Write(peers)
@@ -491,7 +504,8 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 		select {
 		case <-ticker.C:
 			t.Reset()
-			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+			netInfoRPC, _ := getFromRPC("net_info")
+			peers := gjson.Get(netInfoRPC, "result.n_peers").String()
 			if peers != "" {
 				t.Reset()
 				t.Write(peers)
@@ -507,7 +521,8 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 // Exits when the context expires.
 func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duration, connectionSignal chan string) {
 	reconnect := false
-	validators := gjson.Get(getFromRPC("validators"), "result")
+	validatorsRPC, _ := getFromRPC("validators")
+	validators := gjson.Get(validatorsRPC, "result")
 	t.Reset()
 	if validators.Exists() {
 		t.Write("0")
@@ -521,7 +536,8 @@ func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duratio
 	for {
 		select {
 		case <-ticker.C:
-			validators := gjson.Get(getFromRPC("validators"), "result")
+			validatorsRPC, _ := getFromRPC("validators")
+			validators := gjson.Get(validatorsRPC, "result")
 			if validators.Exists() {
 				t.Reset()
 				t.Write(validators.Get("total").String())
@@ -623,10 +639,7 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 // writeBlocks writes the latest Block to the blocksWidget.
 // Exits when the context expires.
 func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
-
-	port := *givenPort
-	host := *givenHost
-	socket := gowebsocket.New("ws://" + host + ":" + port + "/websocket")
+	socket := gowebsocket.New(getWsUrl() + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
@@ -666,9 +679,7 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 // writeBlockDonut continuously changes the displayed percent value on the donut by the
 // step once every delay. Exits when the context expires.
 func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.Duration, pt playType, connectionSignal <-chan string) {
-	port := *givenPort
-	host := *givenHost
-	socket := gowebsocket.New("ws://" + host + ":" + port + "/websocket")
+	socket := gowebsocket.New(getWsUrl() + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		step := gjson.Get(message, "result.data.value.step")
@@ -724,9 +735,7 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 // writeTransactions writes the latest Transactions to the transactionsWidget.
 // Exits when the context expires.
 func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
-	port := *givenPort
-	host := *givenHost
-	socket := gowebsocket.New("ws://" + host + ":" + port + "/websocket")
+	socket := gowebsocket.New(getWsUrl() + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
@@ -766,15 +775,13 @@ func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionS
 // UTIL FUNCTIONS
 
 // Get Data from RPC Endpoint
-func getFromRPC(endpoint string) string {
-	port := *givenPort
-	host := *givenHost
-	resp, _ := resty.R().
+func getFromRPC(endpoint string) (string, error) {
+	resp, err := resty.R().
 		SetHeader("Cache-Control", "no-cache").
 		SetHeader("Content-Type", "application/json").
-		Get("http://" + host + ":" + port + "/" + endpoint)
+		Get(getHttpUrl() + "/" + endpoint)
 
-	return resp.String()
+	return resp.String(), err
 }
 
 // byteCountDecimal calculates bytes integer to a human readable decimal number
@@ -814,6 +821,22 @@ func numberWithComma(n int64) string {
 			out[j] = ','
 		}
 	}
+}
+
+func getHttpUrl() string {
+	return getUrl("http", *ssl)
+}
+
+func getWsUrl() string {
+	return getUrl("ws", *ssl)
+}
+
+func getUrl(protocol string, secure bool) string {
+	if secure {
+		protocol = protocol + "s"
+	}
+
+	return fmt.Sprintf("%s://%s:%d", protocol, *givenHost, *givenPort)
 }
 
 func view() {
