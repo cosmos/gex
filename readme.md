@@ -54,7 +54,7 @@ Usage of gex:
         host to connect (default "localhost")
   -p int
         port to connect (default 26657)
-  -s    use SSL for connectio
+  -s    use SSL for connection
 ```
 
 ## Preview
