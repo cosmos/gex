@@ -18,7 +18,7 @@ func websocket() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	socket := gowebsocket.New("ws://localhost:26657/websocket")
+	socket := gowebsocket.New("ws://" + appEndpoint + " :26657/websocket")
 
 	socket.OnConnectError = func(err error, socket gowebsocket.Socket) {
 		log.Fatal("Received connect error - ", err)
