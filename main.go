@@ -45,16 +45,17 @@ import (
 )
 
 const (
-	appEndpoint = "v1-beta.sonr.ws"
-	// RPC requests are made to the native app running
-	appRPC = "http://" + appEndpoint
 	// donut widget constants
 	playTypePercent playType = iota
 	playTypeAbsolute
 )
 
+var appEndpoint = flag.String("a", "v1-beta.sonr.ws", "address to establish connection on")
+
 // optional port variable. example: `gex -p 30057`
 var givenPort = flag.String("p", "26657", "port to connect to as a string")
+
+var appRPC = "http://" + *appEndpoint
 
 // Info describes a list of types with data that are used in the explorer
 type Info struct {
@@ -100,7 +101,7 @@ func main() {
 	networkInfo := getFromRPC("status")
 	networkStatus := gjson.Parse(networkInfo)
 	if !networkStatus.Exists() {
-		panic("Application not running on" + appEndpoint + ":" + fmt.Sprintf("%s", *givenPort))
+		panic("Application not running on " + *appEndpoint + ":" + *givenPort)
 	}
 
 	genesisInfo := gjson.Parse(getFromRPC("genesis"))
@@ -627,7 +628,8 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
 
 	port := *givenPort
-	socket := gowebsocket.New("ws://" + appEndpoint + ":" + port + "/websocket")
+	addr := *appEndpoint
+	socket := gowebsocket.New("ws://" + addr + ":" + port + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
@@ -668,7 +670,8 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 // step once every delay. Exits when the context expires.
 func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.Duration, pt playType, connectionSignal <-chan string) {
 	port := *givenPort
-	socket := gowebsocket.New("ws://" + appEndpoint + ":" + port + "/websocket")
+	addr := *appEndpoint
+	socket := gowebsocket.New("ws://" + addr + ":" + port + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		step := gjson.Get(message, "result.data.value.step")
@@ -725,7 +728,8 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 // Exits when the context expires.
 func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
 	port := *givenPort
-	socket := gowebsocket.New("ws://" + appEndpoint + ":" + port + "/websocket")
+	addr := *appEndpoint
+	socket := gowebsocket.New("ws://" + addr + ":" + port + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
