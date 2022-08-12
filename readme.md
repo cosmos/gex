@@ -51,10 +51,11 @@ gex -s
 gex --help
 Usage of gex:
   -h string
-        host to connect (default "localhost")
+               host to connect (default "localhost")
   -p int
-        port to connect (default 26657)
-  -s    use SSL for connection
+               port to connect (default 26657)
+  -s boolean   
+               use SSL for connection
 ```
 
 ## Preview
