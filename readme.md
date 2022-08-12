@@ -10,21 +10,52 @@ The GEX installation requires Go. If you don't already have Go installed, see ht
 
 To install the GEX binary:
 
-`go install github.com/cosmos/gex@latest`
+```sh
+go install github.com/cosmos/gex@latest
+```
 
 ## Run GEX
 
 To launch a GEX explorer in your terminal window, type:
 
-`gex`
+```sh
+gex
+```
 
 and hit enter.
+
+## Optional Host
+
+Configure an optional host, instead of using the default RPC host `localhost`
+
+```sh
+gex -h 192.168.0.1
+```
 
 ## Optional Port
 
 Configure an optional port, instead of using the default RPC port `26657`
 
-`gex -p 27657`
+```sh
+gex -p 27657
+```
+
+## Optional Secure Transport
+Configure connection to use SSL for HTTP and websockets requests
+```sh
+gex -s
+```
+
+## Print help
+```sh
+gex --help
+Usage of gex:
+  -h string
+        host to connect (default "localhost")
+  -p int
+        port to connect (default 26657)
+  -s    use SSL for connection
+```
 
 ## Preview
 

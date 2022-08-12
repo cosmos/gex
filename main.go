@@ -21,10 +21,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"time"
-	"strconv"
-
 	"log"
+	"os"
+	"strconv"
+	"time"
 
 	"gopkg.in/resty.v1"
 
@@ -40,36 +40,36 @@ import (
 	"github.com/mum4k/termdash/linestyle"
 	"github.com/mum4k/termdash/terminal/termbox"
 	"github.com/mum4k/termdash/terminal/terminalapi"
-	"github.com/mum4k/termdash/widgets/text"
 	"github.com/mum4k/termdash/widgets/donut"
+	"github.com/mum4k/termdash/widgets/text"
 )
 
 const (
-	// RPC requests are made to the native app running
-	appRPC        = "http://localhost"
 	// donut widget constants
 	playTypePercent playType = iota
 	playTypeAbsolute
 )
 
 // optional port variable. example: `gex -p 30057`
-var givenPort = flag.String("p", "26657", "port to connect to as a string")
+var givenPort = flag.Int("p", 26657, "port to connect")
+var givenHost = flag.String("h", "localhost", "host to connect")
+var ssl = flag.Bool("s", false, "use SSL for connection")
 
 // Info describes a list of types with data that are used in the explorer
 type Info struct {
-	blocks *Blocks
+	blocks       *Blocks
 	transactions *Transactions
 }
 
-// Blocks describe content that gets parsed for blocks
+// Blocks describe content that gets parsed for block
 type Blocks struct {
-	amount int
-	secondsPassed int
-	totalGasWanted int64
+	amount               int
+	secondsPassed        int
+	totalGasWanted       int64
 	gasWantedLatestBlock int64
-	maxGasWanted int64
-	lastTx int64
-} 
+	maxGasWanted         int64
+	lastTx               int64
+}
 
 // Transactions describe content that gets parsed for transactions
 type Transactions struct {
@@ -96,16 +96,20 @@ func main() {
 
 	flag.Parse()
 
-	networkInfo := getFromRPC("status")
-	networkStatus := gjson.Parse(networkInfo)
-	if !networkStatus.Exists() {
-		panic("Application not running on localhost:" + fmt.Sprintf("%s", *givenPort))
+	networkInfo, err := getFromRPC("status")
+	if err != nil {
+		fmt.Println("Application not running on " + fmt.Sprintf("%s:%d", *givenHost, *givenPort))
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
-	genesisInfo := gjson.Parse(getFromRPC("genesis"))
+	networkStatus := gjson.Parse(networkInfo)
+
+	genesisRPC, _ := getFromRPC("genesis")
+
+	genesisInfo := gjson.Parse(genesisRPC)
 
 	ctx, cancel := context.WithCancel(context.Background())
-
 
 	// START INITIALISING WIDGETS
 
@@ -157,7 +161,10 @@ func main() {
 
 	// Creates Max Block Size Widget
 	maxBlocksizeWidget, err := text.New()
-	maxBlockSize := gjson.Get(getFromRPC("consensus_params"), "result.consensus_params.block.max_bytes").Int()
+
+	consensusParamsRPC, _ := getFromRPC("consensus_params")
+
+	maxBlockSize := gjson.Get(consensusParamsRPC, "result.consensus_params.block.max_bytes").Int()
 	if err != nil {
 		panic(err)
 	}
@@ -229,7 +236,7 @@ func main() {
 	if err := transactionWidget.Write("Transactions will appear as soon as they are confirmed in a block.\n\n"); err != nil {
 		panic(err)
 	}
-	
+
 	// Create Blocks parsing widget
 	blocksWidget, err := text.New(text.RollContent(), text.WrapAtWords())
 	if err != nil {
@@ -238,7 +245,6 @@ func main() {
 	if err := blocksWidget.Write(networkStatus.Get("result.sync_info.latest_block_height").String() + "\n"); err != nil {
 		panic(err)
 	}
-
 
 	// END INITIALISING WIDGETS
 
@@ -311,7 +317,6 @@ func main() {
 												container.Border(linestyle.Light),
 												container.BorderTitle("Latest Block"),
 												container.PlaceWidget(blocksWidget),
-												
 											),
 											container.Right(
 												container.Border(linestyle.Light),
@@ -347,7 +352,7 @@ func main() {
 			),
 			container.Bottom(
 				container.SplitVertical(
-					
+
 					container.Left(
 						container.SplitHorizontal(
 							container.Top(
@@ -365,7 +370,6 @@ func main() {
 												container.PlaceWidget(gasAvgBlockWidget),
 											),
 										),
-										
 									),
 									container.Right(
 										container.SplitVertical(
@@ -380,12 +384,11 @@ func main() {
 												container.PlaceWidget(latestGasWidget),
 											),
 										),
-										
 									),
 								),
 							),
 							container.Bottom(
-								//empty
+							//empty
 							),
 						),
 					), container.Right(
@@ -412,7 +415,6 @@ func main() {
 	}
 }
 
-
 // writeTime writes the current system time to the timeWidget.
 // Exits when the context expires.
 func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration) {
@@ -434,12 +436,12 @@ func writeTime(ctx context.Context, info Info, t *text.Text, delay time.Duration
 	}
 }
 
-
 // writeHealth writes the status to the healthWidget.
 // Exits when the context expires.
 func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connectionSignal chan string) {
 	reconnect := false
-	health := gjson.Get(getFromRPC("health"), "result")
+	healthRPC, _ := getFromRPC("health")
+	health := gjson.Get(healthRPC, "result")
 	t.Reset()
 	if health.Exists() {
 		t.Write("✔️ good")
@@ -453,7 +455,8 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 	for {
 		select {
 		case <-ticker.C:
-			health := gjson.Get(getFromRPC("health"), "result")
+			healthRPC, _ := getFromRPC("health")
+			health := gjson.Get(healthRPC, "result")
 			if health.Exists() {
 				t.Reset()
 				t.Write("✔️ good")
@@ -482,7 +485,9 @@ func writeHealth(ctx context.Context, t *text.Text, delay time.Duration, connect
 // writePeers writes the connected Peers to the peerWidget.
 // Exits when the context expires.
 func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
-	peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+	netInfoRPC, _ := getFromRPC("net_info")
+
+	peers := gjson.Get(netInfoRPC, "result.n_peers").String()
 	t.Reset()
 	if peers != "" {
 		t.Write(peers)
@@ -499,7 +504,8 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 		select {
 		case <-ticker.C:
 			t.Reset()
-			peers := gjson.Get(getFromRPC("net_info"), "result.n_peers").String()
+			netInfoRPC, _ := getFromRPC("net_info")
+			peers := gjson.Get(netInfoRPC, "result.n_peers").String()
 			if peers != "" {
 				t.Reset()
 				t.Write(peers)
@@ -515,7 +521,8 @@ func writePeers(ctx context.Context, t *text.Text, delay time.Duration) {
 // Exits when the context expires.
 func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duration, connectionSignal chan string) {
 	reconnect := false
-	validators := gjson.Get(getFromRPC("validators"), "result")
+	validatorsRPC, _ := getFromRPC("validators")
+	validators := gjson.Get(validatorsRPC, "result")
 	t.Reset()
 	if validators.Exists() {
 		t.Write("0")
@@ -529,7 +536,8 @@ func writeAmountValidators(ctx context.Context, t *text.Text, delay time.Duratio
 	for {
 		select {
 		case <-ticker.C:
-			validators := gjson.Get(getFromRPC("validators"), "result")
+			validatorsRPC, _ := getFromRPC("validators")
+			validators := gjson.Get(validatorsRPC, "result")
 			if validators.Exists() {
 				t.Reset()
 				t.Write(validators.Get("total").String())
@@ -579,17 +587,16 @@ func writeGasWidget(ctx context.Context, info Info, tMax *text.Text, tAvgBlock *
 			totalGasPerBlock := uint64(0)
 
 			// don't divide by 0
-			if(totalBlocks > 0) {
-				totalGasPerBlock = uint64( totalGasWanted / totalBlocks )
+			if totalBlocks > 0 {
+				totalGasPerBlock = uint64(totalGasWanted / totalBlocks)
 			}
-
 
 			totalTransactions := uint64(info.transactions.amount)
 
 			// don't divide by 0
 			averageGasPerTx := uint64(0)
-			if(totalTransactions > 0) {
-				averageGasPerTx = uint64( totalGasWanted / info.transactions.amount)
+			if totalTransactions > 0 {
+				averageGasPerTx = uint64(totalGasWanted / info.transactions.amount)
 			}
 
 			tMax.Write(fmt.Sprintf("%v", numberWithComma(info.blocks.maxGasWanted)))
@@ -616,10 +623,10 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 		case <-ticker.C:
 			t.Reset()
 			blocksPerSecond := 0.00
-			if(info.blocks.secondsPassed != 0) {
+			if info.blocks.secondsPassed != 0 {
 				blocksPerSecond = float64(info.blocks.secondsPassed) / float64(info.blocks.amount)
 			}
-			
+
 			t.Write(fmt.Sprintf("%.2f seconds", blocksPerSecond))
 		case <-ctx.Done():
 			return
@@ -627,22 +634,18 @@ func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay ti
 	}
 }
 
-
 // WEBSOCKET WIDGETS
-
 
 // writeBlocks writes the latest Block to the blocksWidget.
 // Exits when the context expires.
 func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
-
-	port := *givenPort
-	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
+	socket := gowebsocket.New(getWsUrl() + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentBlock := gjson.Get(message, "result.data.value.block.header.height")
 		if currentBlock.String() != "" {
 			t.Reset()
-			err := t.Write(fmt.Sprintf("%v", numberWithComma(int64(currentBlock.Int())))); 
+			err := t.Write(fmt.Sprintf("%v", numberWithComma(int64(currentBlock.Int()))))
 			if err != nil {
 				panic(err)
 			}
@@ -676,8 +679,7 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 // writeBlockDonut continuously changes the displayed percent value on the donut by the
 // step once every delay. Exits when the context expires.
 func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay time.Duration, pt playType, connectionSignal <-chan string) {
-	port := *givenPort
-	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
+	socket := gowebsocket.New(getWsUrl() + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		step := gjson.Get(message, "result.data.value.step")
@@ -702,7 +704,6 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 		if step.String() == "RoundStepPropose" {
 			progress = 20
 		}
-
 
 		if err := d.Percent(progress); err != nil {
 			panic(err)
@@ -734,8 +735,7 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 // writeTransactions writes the latest Transactions to the transactionsWidget.
 // Exits when the context expires.
 func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionSignal <-chan string) {
-	port := *givenPort
-	socket := gowebsocket.New("ws://localhost:" + port + "/websocket")
+	socket := gowebsocket.New(getWsUrl() + "/websocket")
 
 	socket.OnTextMessage = func(message string, socket gowebsocket.Socket) {
 		currentTx := gjson.Get(message, "result.data.value.TxResult.result.log")
@@ -775,14 +775,13 @@ func writeTransactions(ctx context.Context, info Info, t *text.Text, connectionS
 // UTIL FUNCTIONS
 
 // Get Data from RPC Endpoint
-func getFromRPC(endpoint string) string {
-	port := *givenPort
-	resp, _ := resty.R().
+func getFromRPC(endpoint string) (string, error) {
+	resp, err := resty.R().
 		SetHeader("Cache-Control", "no-cache").
 		SetHeader("Content-Type", "application/json").
-		Get(appRPC + ":" + port + "/" + endpoint)
+		Get(getHttpUrl() + "/" + endpoint)
 
-	return resp.String()
+	return resp.String(), err
 }
 
 // byteCountDecimal calculates bytes integer to a human readable decimal number
@@ -800,28 +799,44 @@ func byteCountDecimal(b int64) string {
 }
 
 func numberWithComma(n int64) string {
-    in := strconv.FormatInt(n, 10)
-    numOfDigits := len(in)
-    if n < 0 {
-        numOfDigits-- // First character is the - sign (not a digit)
-    }
-    numOfCommas := (numOfDigits - 1) / 3
+	in := strconv.FormatInt(n, 10)
+	numOfDigits := len(in)
+	if n < 0 {
+		numOfDigits-- // First character is the - sign (not a digit)
+	}
+	numOfCommas := (numOfDigits - 1) / 3
 
-    out := make([]byte, len(in)+numOfCommas)
-    if n < 0 {
-        in, out[0] = in[1:], '-'
-    }
+	out := make([]byte, len(in)+numOfCommas)
+	if n < 0 {
+		in, out[0] = in[1:], '-'
+	}
 
-    for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
-        out[j] = in[i]
-        if i == 0 {
-            return string(out)
-        }
-        if k++; k == 3 {
-            j, k = j-1, 0
-            out[j] = ','
-        }
-    }
+	for i, j, k := len(in)-1, len(out)-1, 0; ; i, j = i-1, j-1 {
+		out[j] = in[i]
+		if i == 0 {
+			return string(out)
+		}
+		if k++; k == 3 {
+			j, k = j-1, 0
+			out[j] = ','
+		}
+	}
+}
+
+func getHttpUrl() string {
+	return getUrl("http", *ssl)
+}
+
+func getWsUrl() string {
+	return getUrl("ws", *ssl)
+}
+
+func getUrl(protocol string, secure bool) string {
+	if secure {
+		protocol = protocol + "s"
+	}
+
+	return fmt.Sprintf("%s://%s:%d", protocol, *givenHost, *givenPort)
 }
 
 func view() {
