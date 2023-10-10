@@ -95,7 +95,6 @@ func main() {
 	if err != nil {
 		fmt.Println("Application not running on " + fmt.Sprintf("%s:%d", *givenHost, *givenPort))
 		fmt.Println(err)
-		t.Close()
 		os.Exit(1)
 	}
 
