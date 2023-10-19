@@ -82,25 +82,19 @@ type playType int
 func main() {
 	view()
 
+	flag.Parse()
+
 	// Init internal variables
 	info := Info{}
 	info.blocks = new(Blocks)
 	info.transactions = new(Transactions)
 
 	connectionSignal := make(chan string)
-	t, err := termbox.New()
-	if err != nil {
-		panic(err)
-	}
-	defer t.Close()
-
-	flag.Parse()
 
 	networkInfo, err := getFromRPC("status")
 	if err != nil {
 		fmt.Println("Application not running on " + fmt.Sprintf("%s:%d", *givenHost, *givenPort))
 		fmt.Println(err)
-		t.Close()
 		os.Exit(1)
 	}
 
@@ -265,6 +259,12 @@ func main() {
 	go writeBlocks(ctx, info, blocksWidget, connectionSignal)
 	go writeTransactions(ctx, info, transactionWidget, connectionSignal)
 	go writeBlockDonut(ctx, green, 0, 20, 700*time.Millisecond, playTypePercent, connectionSignal)
+
+	t, err := termbox.New()
+	if err != nil {
+		panic(err)
+	}
+	defer t.Close()
 
 	// Draw Dashboard
 	c, err := container.New(
