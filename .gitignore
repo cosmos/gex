@@ -1,1 +1,9 @@
 .DS_STORE
+**/testdata/**/go.sum
+dist/
+node_modules
+.DS_Store
+.idea
+.vscode
+build/
+*coverage.*

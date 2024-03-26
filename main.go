@@ -26,13 +26,6 @@ import (
 	"strconv"
 	"time"
 
-	"gopkg.in/resty.v1"
-
-	"github.com/google/uuid"
-	ga "github.com/ozgur-soft/google-analytics/src"
-	"github.com/sacOO7/gowebsocket"
-	"github.com/tidwall/gjson"
-
 	"github.com/mum4k/termdash"
 	"github.com/mum4k/termdash/cell"
 	"github.com/mum4k/termdash/container"
@@ -42,7 +35,19 @@ import (
 	"github.com/mum4k/termdash/terminal/terminalapi"
 	"github.com/mum4k/termdash/widgets/donut"
 	"github.com/mum4k/termdash/widgets/text"
+	"github.com/sacOO7/gowebsocket"
+	"github.com/tidwall/gjson"
+	"gopkg.in/resty.v1"
+
+	"github.com/ignite/gex/cmd"
 )
+
+func main() {
+	if err := cmd.NewRootCmd().Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
 
 const (
 	// donut widget constants
@@ -51,9 +56,11 @@ const (
 )
 
 // optional port variable. example: `gex -p 30057`
-var givenPort = flag.Int("p", 26657, "port to connect")
-var givenHost = flag.String("h", "localhost", "host to connect")
-var ssl = flag.Bool("s", false, "use SSL for connection")
+var (
+	givenPort = flag.Int("p", 26657, "port to connect")
+	givenHost = flag.String("h", "localhost", "host to connect")
+	ssl       = flag.Bool("s", false, "use SSL for connection")
+)
 
 // Info describes a list of types with data that are used in the explorer
 type Info struct {
@@ -79,9 +86,7 @@ type Transactions struct {
 // playType indicates the type of the donut widget.
 type playType int
 
-func main() {
-	view()
-
+func main2() {
 	flag.Parse()
 
 	// Init internal variables
@@ -389,7 +394,7 @@ func main() {
 								),
 							),
 							container.Bottom(
-							//empty
+							// empty
 							),
 						),
 					), container.Right(
@@ -613,7 +618,6 @@ func writeGasWidget(ctx context.Context, info Info, tMax *text.Text, tAvgBlock *
 // writeSecondsPerBlock writes the status to the Time per block.
 // Exits when the context expires.
 func writeSecondsPerBlock(ctx context.Context, info Info, t *text.Text, delay time.Duration) {
-
 	t.Reset()
 
 	ticker := time.NewTicker(delay)
@@ -653,7 +657,6 @@ func writeBlocks(ctx context.Context, info Info, t *text.Text, connectionSignal 
 			info.blocks.amount++
 			info.blocks.maxGasWanted = gjson.Get(message, "result.data.value.result_end_block.consensus_param_updates.block.max_gas").Int()
 		}
-
 	}
 
 	socket.Connect()
@@ -709,7 +712,6 @@ func writeBlockDonut(ctx context.Context, d *donut.Donut, start, step int, delay
 		if err := d.Percent(progress); err != nil {
 			panic(err)
 		}
-
 	}
 
 	socket.Connect()
@@ -838,23 +840,4 @@ func getUrl(protocol string, secure bool) string {
 	}
 
 	return fmt.Sprintf("%s://%s:%d", protocol, *givenHost, *givenPort)
-}
-
-func view() {
-	api := new(ga.API)
-	api.ContentType = "application/x-www-form-urlencoded"
-
-	client := new(ga.Client)
-	client.ProtocolVersion = "1"
-	client.ClientID = uuid.New().String()
-	client.TrackingID = "UA-183957259-1"
-	client.HitType = "event"
-	client.DocumentLocationURL = "https://github.com/cosmos/gex"
-	client.DocumentTitle = "Dashboard"
-	client.DocumentEncoding = "UTF-8"
-	client.EventCategory = "Start"
-	client.EventAction = "Dashboard"
-	client.EventLabel = "start"
-
-	api.Send(client)
 }

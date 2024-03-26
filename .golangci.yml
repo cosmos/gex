@@ -1,0 +1,65 @@
+run:
+  tests: false
+  skip-dirs:
+    - ignite/ui
+#   # timeout for analysis, e.g. 30s, 5m, default is 1m
+#   timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - decorder
+    - depguard
+    - dogsled
+    - dupword
+    # - errcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - goconst
+    - gocritic
+    - godot
+    - gofumpt
+    - revive
+    # - gosec
+    - gosimple
+    - govet
+    - grouper
+    - ineffassign
+    # - interfacer
+    - misspell
+    - nakedret
+    - nolintlint
+    - exportloopref
+    - staticcheck
+    - reassign
+    - stylecheck
+    - typecheck
+    - unconvert
+    - tenv
+    - thelper
+    - unused
+    - unparam
+    - misspell
+    - forbidigo
+    # - wrapcheck
+    # - wsl
+
+linters-settings:
+  forbidigo:
+    forbid:
+      - p: ^fmt\.Errorf$
+        msg: fmt.Errorf should be replaced by '"github.com/ignite/cli/ignite/pkg/errors"'
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "errors"
+            desc: Should be replaced by '"github.com/ignite/cli/ignite/pkg/errors"'
+          - pkg: "github.com/pkg/errors"
+            desc: Should be replaced by '"github.com/ignite/cli/ignite/pkg/errors"'
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
